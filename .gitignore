@@ -1,0 +1,9 @@
+slidesegmenter_venv
+__pycache__
+
+*.sh
+*.tar
+*.json
+*.egg-info
+
+00_data_selection.py
