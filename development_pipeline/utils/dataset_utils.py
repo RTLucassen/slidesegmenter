@@ -16,28 +16,20 @@
 Implementation of image generator for neural network training.
 """
 
-import os
-import sys
-import platform
-
-if platform.system() == 'Linux':
-    sys.path.append('..')
-elif platform.system() == 'Windows':
-    sys.path.append(os.path.join(__file__, '..', '..'))
-
-import cv2
-import scipy
-import torch
 import random
+from math import ceil
+from typing import Any, Optional
+
+import albumentations as A
+import cv2
 import numpy as np
 import pandas as pd
+import scipy
 import SimpleITK as sitk
-import albumentations as A
-from skimage.filters import threshold_multiotsu
+import torch
 from skimage.color import rgb2gray
+from skimage.filters import threshold_multiotsu
 from skimage.morphology import binary_closing, binary_opening, disk
-from math import ceil
-from typing import Any
 
 
 class TrainingDataset(torch.utils.data.Dataset):
@@ -48,10 +40,10 @@ class TrainingDataset(torch.utils.data.Dataset):
     def __init__(
         self, 
         df: pd.core.frame.DataFrame,
-        length: int = None,
-        shape: tuple[int] = None,
-        max_shape: tuple[int] = None,
-        divisor: int = None,
+        length: Optional[int] = None,
+        shape: Optional[tuple[int, int]] = None,
+        max_shape: Optional[tuple[int, int]] = None,
+        divisor: Optional[int] = None,
         augmentations: dict[str, Any] = {},
     ) -> None:
         """
@@ -63,7 +55,7 @@ class TrainingDataset(torch.utils.data.Dataset):
                     training without specifying epochs).
             shape: shape of random crops from the images as (height, width).
             max_shape: maximum shape of the images as (height, width).
-            divisor: input images are padded to be divisible by the specified number.
+            divisor: input images are padded to be divisible by this number.
             augmentations: settings for on-the-fly data augmentation.
         """
         # initialize instance attributes
@@ -169,7 +161,7 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return image
 
-    def get_padding(self, image_shape: tuple[int]) -> tuple:
+    def get_padding(self, image_shape: tuple[int, int]) -> tuple:
         """
         Returns:
             padding: tuple with amount of padding to add to each image dimension.
@@ -330,10 +322,10 @@ class SupervisedTrainingDataset(TrainingDataset):
     def __init__(
         self, 
         df: pd.core.frame.DataFrame,
-        length: int = None,
-        shape: tuple[int] = None,
-        max_shape: tuple[int] = None,
-        divisor: int = None,
+        length: Optional[int] = None,
+        shape: Optional[tuple[int, int]] = None,
+        max_shape: Optional[tuple[int, int]] = None,
+        divisor: Optional[int] = None,
         augmentations: dict[str, Any] = {},
     ) -> None:
         """
@@ -345,8 +337,7 @@ class SupervisedTrainingDataset(TrainingDataset):
                     training without specifying epochs).
             shape: shape of random crops from images as (width, height).
             max_shape: maximum shape of the images as (height, width).
-            divisor: input images are cropped to be divisible by 
-                          the specified number.
+            divisor: input images are padded to be divisible by this number.
             augmentations: settings for on-the-fly data augmentation.
         """
         super().__init__(df, length, shape, max_shape, divisor, augmentations)
@@ -368,7 +359,7 @@ class SupervisedTrainingDataset(TrainingDataset):
             self.transforms['color']['background'],
         )
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         """ 
         Returns indexed image-label pair from dataset.
 
@@ -476,53 +467,6 @@ class SupervisedTrainingDataset(TrainingDataset):
         return transforms
 
 
-class SelfSupervisedTrainingDataset(TrainingDataset):
-    """
-    Dataset class for neural network training.
-    """
-
-    def __init__(
-        self, 
-        df: pd.core.frame.DataFrame,
-        length: int = None,
-        shape: tuple[int] = None,
-        max_shape: tuple[int] = None,
-        divisor: int = None,
-        augmentations: dict[str, Any] = {},
-    ) -> None:
-        """
-        Initialize dataset instance.
-
-        Args:
-            df: dataframe with dataset info.
-            length: number of items in the dataset (can be set arbitrarily for
-                    training without specifying epochs).
-            shape: shape of random crops from images as (width, height).
-            max_shape: maximum shape of the images as (height, width).
-            divisor: input images are cropped to be divisible by 
-                          the specified number.
-            augmentations: settings for on-the-fly data augmentation.
-        """
-        super().__init__(df, length, shape, max_shape, divisor, augmentations)
-
-    def __getitem__(self, index: int) -> tuple[torch.Tensor]:
-        """ 
-        Returns indexed image-label pair from dataset.
-
-        Args:
-            index: index for selecting image-annotation pair.
-
-        Returns:
-            corrupted_image: image tensor with noise and shape (channels=3, rows, columns),
-                   rescaled in the 0.0-1.0 range and optionally augmented.
-            image: original image tensor with shape (channels=3, rows, columns), 
-                   rescaled in the 0.0-1.0 range and optionally augmented.
-        """
-        image = super().__getitem__(index)
-                
-        return image, create_weak_label(image)
-
-
 class InferenceDataset(torch.utils.data.Dataset):
     """
     Dataset class for neural network inference.
@@ -544,7 +488,7 @@ class InferenceDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.image_paths)
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor]:
+    def __getitem__(self, index: int) -> torch.Tensor:
         """ 
         Returns indexed image from dataset.
 
@@ -570,28 +514,22 @@ class InferenceDataset(torch.utils.data.Dataset):
 
 
 def seed_worker(worker_id):
+    """ Seed randomness of worker."""
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
 
-def get_bounding_box(array: np.ndarray) -> tuple:
-    """
-    Returns minimum and maximum row and column index 
-    for box around non-zero elements.
-    """
-    rows = np.any(array, axis=1)
-    cols = np.any(array, axis=0)
-    rmin, rmax = np.where(rows)[0][[0, -1]]
-    cmin, cmax = np.where(cols)[0][[0, -1]]
-
-    return rmin, rmax, cmin, cmax
-
-
 def create_label(annotation: np.ndarray, divisor: float = 100) -> np.ndarray:
     """
-    create label (consisting of binary mask, horizontal map, and vertical map)
-    from annotation array (consisting of mask and separate regions).
+    create label from the annotation array.
+
+    Args:
+        annotation: annotation array consisting of mask and separate regions.
+        divisor: input images are cropped to be divisible by the specified number.
+    
+    returns:
+        label: label array consisting of binary mask, horizontal map, and vertical map.
     """
     # convert annotations to zero and one
     annotation = np.where(annotation > 0.5, 1, 0)
@@ -648,27 +586,4 @@ def create_label(annotation: np.ndarray, divisor: float = 100) -> np.ndarray:
         [tissue_mask, marking_mask, horizontal_regions/divisor, vertical_regions/divisor],
         axis=0,
     )
-    return label
-
-
-def create_weak_label(
-        image: torch.Tensor, 
-    ) -> torch.Tensor:
-    """
-    Create training image pair by generating label using Otsu thresholding.
-
-    Args:
-        image: input image of the shape: (channels, height, width).
-    
-    Returns:
-        image: input image of the shape: (channels, height, width).
-        label: label created by Otsu thresholding the image of the shape: (1, height, width).
-    """
-    # create image corrupted by additive Gaussian noise
-    grayscale_image = rgb2gray(np.transpose(image, (1,2,0)))
-    threshold = threshold_multiotsu(grayscale_image, 2)[None, ...]
-    label = np.where(grayscale_image > threshold[0][0], 0, 1)
-    label = binary_opening(binary_closing(label, footprint=disk(5)), footprint=disk(5))
-    label = torch.where(torch.from_numpy(label)[None, ...], 1, 0)
-
     return label

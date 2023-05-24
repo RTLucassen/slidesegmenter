@@ -16,15 +16,6 @@
 Implementation of network architecture (similar to U-Net) in Pytorch.
 """
 
-import os
-import sys
-import platform
-
-if platform.system() == 'Linux':
-    sys.path.append('..')
-elif platform.system() == 'Windows':
-    sys.path.append(os.path.join(__file__, '..', '..'))
-
 import torch
 import torch.nn as nn
 from torchinfo import summary
@@ -478,6 +469,7 @@ class AdaptedUNet(nn.Module):
         """
         Initialize the weights using the specified initialization method
         if it is a 2D convolutional layer.
+        
         Args:
             layer:  torch network layer
         """

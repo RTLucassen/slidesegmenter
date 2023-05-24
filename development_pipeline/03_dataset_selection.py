@@ -19,16 +19,20 @@ and randomly assign them to the training or validation set.
 
 import os
 import random
-import natsort
-import pandas as pd
 from pathlib import Path
 
-from config import PROJECT_SEED, images_folder, annotations_folder, sheets_folder
+import natsort
+import pandas as pd
 
-subfolders = ['remaining']
-dataset_name = 'supervised_remaining'
+from config import PROJECT_SEED
+from config import annotations_folder, images_folder, sheets_folder
+
+
+# define settings
+subfolders = ['batch-1']
+dataset_name = 'supervised_batch-1'
 include_annotations = True
-validation_fraction = 0.05
+validation_fraction = 0.10
 
 if __name__ == '__main__':
 

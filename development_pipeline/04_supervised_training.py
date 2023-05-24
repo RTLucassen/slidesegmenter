@@ -13,7 +13,7 @@
 #    limitations under the License.
 
 """
-Weakly-supervised training loop for model.
+Supervised training loop for model.
 """
 
 # suppress irrelevant pytorch warning until fix
@@ -24,31 +24,34 @@ warnings.filterwarnings(
     message='TypedStorage is deprecated',
 )
 
-import os
 import io
 import json
-import torch
-import random
-import platform
 import logging
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from tqdm import tqdm
+import os
+import platform
+import random
 from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
 from torchinfo import summary
 from torch.optim import AdamW
-from torch.utils.data import RandomSampler, SequentialSampler, DataLoader
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from tqdm import tqdm
 
-from config import PROJECT_SEED, images_folder, sheets_folder, models_folder
-from utils.models import UNet
-from utils.training_utils import TverskyFocalLoss
-from utils.dataset_utils import SelfSupervisedTrainingDataset, seed_worker
-from utils.visualization_utils import rgb_image_viewer
+from config import PROJECT_SEED
+from config import annotations_folder, images_folder, models_folder, sheets_folder
+from utils.models import AdaptedUNet
+from utils.training_utils import CombinedLoss
+from utils.dataset_utils import seed_worker, SupervisedTrainingDataset
+from utils.visualization_utils import image_viewer, rgb_image_viewer 
 
 
+# define settings class
 class Settings():
 
     def __init__(self, settings: dict) -> None:
@@ -62,7 +65,6 @@ class Settings():
         self.experiment_name = settings['experiment_name']
         self.dataset_filename = settings['dataset_filename']
         self.seed = settings['seed']
-        self.image_shape = settings['image_shape']
         self.model_name = settings['model_name']
         self.compile_model = settings['compile_model']
         self.checkpoint_path = settings['checkpoint_path']
@@ -78,28 +80,28 @@ class Settings():
 
 # specify experiment and dataset settings
 configuration = {
-    "experiment_name": f'U-Net_{datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")}',
-    "dataset_filename": 'weakly-supervised.xlsx',
+    "experiment_name": f'Adapted_U-Net_{datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")}',
+    "dataset_filename": 'supervised_batch-1.xlsx',
     "seed": PROJECT_SEED,
-    "model_name": "UNet",
+    "model_name": "AdaptedUNet",
     "compile_model": False,
-    "checkpoint_path": None,
+    "checkpoint_path": None, #Path(models_folder / 'Adapted_U-Net_2023-05-12_18h51m08s' / 'checkpoint_I9000.tar').as_posix(),
 
     # specify model hyperparameters
     "model": {
         "input_channels": 3,
-        "N_classes": 1,
-        "filters": 16,
+        "filters": 32,
         "downsample_factors": [2, 4, 4, 4, 4],
     },
 
     # specify training hyperparameters
     "training": {
         "learning_rate": 2e-4,
-        "iterations": 30000,
-        "iterations_per_update": 10,
+        "iterations": 60000,
+        "iterations_per_update": 5,
         "loss": {
-            "weights": [1, 4],
+            "weights": [2, 4, 1, 2],
+            "class_weights": [1, 1],
             "fp_weight": 0.5,
             "fn_weight": 0.5,
             "gamma": 4,
@@ -110,7 +112,7 @@ configuration = {
         "pin_memory": True,
         "batch_size": 1,
         "image_shape": None,
-        "max_image_shape": None,
+        "max_image_shape": (3072, 3072),
     },
 
     # specify augmentation hyperparameters
@@ -119,7 +121,7 @@ configuration = {
             "p": 1.00,
         },
         "Affine": {
-            "p": 0.50,
+            "p": 0.75,
             "translate_px": {
                "x": (-256, 256), 
                "y": (-256, 256),
@@ -133,11 +135,23 @@ configuration = {
         "VerticalFlip": {
             "p": 0.5,
         },
-        "HueSaturationValue": {
-            "p": 0.25,
-            "hue_shift_limit": 20,
-            "sat_shift_limit": (-25, 25),
+        "HueSaturationValue tissue": {
+            "p": 0.50,
+            "hue_shift_limit": 25,
+            "sat_shift_limit": 25,
             "val_shift_limit": 0,
+        },
+        "HueSaturationValue non-tissue": {
+            "p": 0.50,
+            "hue_shift_limit": 100,
+            "sat_shift_limit": 0,
+            "val_shift_limit": 0,
+        },
+        "HueSaturationValue pen": {
+            "p": 0.50,
+            "hue_shift_limit": 0,
+            "sat_shift_limit": 50,
+            "val_shift_limit": 50,
         },
         "RandomBrightnessContrast": {
            "p": 0.25,
@@ -162,7 +176,6 @@ configuration = {
 # logging settings
 experiment_folder = configuration['experiment_name']
 period = 500
-N_weighted_avg = 20
 
 if __name__ == '__main__':
 
@@ -207,18 +220,19 @@ if __name__ == '__main__':
     # load the dataset information
     df = pd.read_excel(sheets_folder / settings.dataset_filename)
     
-    # create full image paths
-    full_image_paths = []
-    for relative_path in list(df['image_paths']):
-        full_image_paths.append((images_folder / relative_path).as_posix())      
-    df['image_paths'] = full_image_paths
+    # create full image and annotation paths
+    for column, folder in zip(['image_paths', 'annotation_paths'], [images_folder, annotations_folder]):
+        full_paths = []
+        for relative_path in list(df[column]):
+            full_paths.append((folder / relative_path).as_posix())      
+        df[column] = full_paths
 
     # separate splits
     df_train = df[df['set']=='train']
     df_val = df[df['set']=='val']
 
     # initialize training dataset instance and dataloader
-    train_dataset = SelfSupervisedTrainingDataset(
+    train_dataset = SupervisedTrainingDataset(
         df=df_train,
         length=settings.training['iterations']*settings.dataloader['batch_size'],
         shape=settings.dataloader['image_shape'],
@@ -235,7 +249,7 @@ if __name__ == '__main__':
     )
 
     # initialize validation dataset instance and dataloader
-    val_dataset = SelfSupervisedTrainingDataset(
+    val_dataset = SupervisedTrainingDataset(
         df=df_val,
         length=None,
         shape=None,
@@ -252,30 +266,59 @@ if __name__ == '__main__':
     )
 
     # initialize model
-    if settings.model_name == 'UNet':
-        model = UNet(**settings.model)
+    if settings.model_name == 'AdaptedUNet':
+        model = AdaptedUNet(**settings.model)
     else:
         raise ValueError('Model name was not recognized.')
     
     # load checkpoint if specified
     if isinstance(settings.checkpoint_path, str):
         # load the checkpoint model settings
-        settings_path = Path(*settings.checkpoint_path.parts[:-1]) / 'settings.json'
+        settings_path = Path(settings.checkpoint_path).parent / 'settings.json'
         with open(settings_path, 'r') as f:
             checkpoint_settings = Settings(json.load(f))
 
         # check if the models are the same
-        if checkpoint_settings.model != settings.model:
-            raise ValueError(
-                'Specified model settings do not match the checkpoint model settings.'
+        if checkpoint_settings.model_name == 'UNet':
+            for key in checkpoint_settings.model:
+                if key not in ['N_classes']:
+                    if checkpoint_settings.model[key] != settings.model[key]:
+                        raise ValueError('Atleast one of the model settings differs.')
+            # initialize the model parameters based on the model checkpoint
+            checkpoint = torch.load(
+                settings.checkpoint_path,
+                map_location=torch.device('cpu')
             )
-        
-        # initialize the model parameters based on the model checkpoint
-        checkpoint = torch.load(
-            settings.checkpoint_path,
-            map_location=torch.device('cpu')
-        )
-        model.load_state_dict(checkpoint['model_state_dict'])
+            # convert state_dict to account for changes between UNet and AdaptedUNet model
+            converted_state_dict = {}
+            for key, value in checkpoint['model_state_dict'].items():
+                if 'final' in key:
+                    for replacement in ['final_conv_tissue', 'final_conv_distance']:
+                        new_key = key.replace('final_conv', replacement)
+                        converted_state_dict[new_key] = model.state_dict()[new_key]
+                elif 'up' in key:
+                    converted_state_dict[key.replace('up', 'up_tissue')] = value
+                    converted_state_dict[key.replace('up', 'up_distance')] = value
+                else:
+                    converted_state_dict[key] = value
+            # initialize model parameters from state dict
+            model.load_state_dict(converted_state_dict)
+
+        elif checkpoint_settings.model_name == 'AdaptedUNet':
+            # check if the models are the same
+            if checkpoint_settings.model != settings.model:
+                raise ValueError(
+                    'Specified model settings do not match the checkpoint model settings.'
+                )
+
+            # initialize the model parameters based on the model checkpoint
+            checkpoint = torch.load(
+                settings.checkpoint_path,
+                map_location=torch.device('cpu')
+            )
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            raise ValueError('Model name not recognized.')
 
     # transfer the model to the selected device
     model = model.to(device)
@@ -305,17 +348,19 @@ if __name__ == '__main__':
 
     # initialize optimizer and loss function
     optimizer = AdamW(model.parameters(), lr=settings.training['learning_rate'])
-    loss_function = TverskyFocalLoss(
+    loss_function = CombinedLoss(
+        device=device,
         weights=settings.training['loss']['weights'],
+        class_weights=settings.training['loss']['class_weights'],
         fp_weight=settings.training['loss']['fp_weight'],
         fn_weight=settings.training['loss']['fn_weight'],
         gamma=settings.training['loss']['gamma'],
     )
 
     # start training loop
-    accum_loss = []
+    iteration_losses = {name: [] for name in loss_function.names}
+    update_losses = {name: [] for name in loss_function.names}
     training_loss = []
-    avg_training_loss = []
     validation_index = []
     validation_loss = []
     for i, (X, y) in tqdm(enumerate(train_dataloader)):
@@ -323,8 +368,8 @@ if __name__ == '__main__':
         index = i+1
 
         # update learning rate
-        if index == settings.training['iterations']*(1/6):
-            new_lr = settings.training['learning_rate']/3.333333
+        if index == settings.training['iterations']*(1/12):
+            new_lr = settings.training['learning_rate']/2
             for g in optimizer.param_groups:
                 g['lr'] = new_lr
 
@@ -336,33 +381,41 @@ if __name__ == '__main__':
         y_pred = model(X)
 
         # calculate loss
-        loss = loss_function(y_pred, y) / settings.training['iterations_per_update']
-        accum_loss.append(loss.item())
-
+        losses = loss_function(y_pred, y)
+        # correct for gradient accumulation and log values of loss components
+        for name in losses:
+            losses[name] = losses[name] / settings.training['iterations_per_update']
+            iteration_losses[name].append(losses[name].item())
+        
         # perform the backwards pass
+        loss = sum(losses.values())
         loss.backward()
 
         # for debugging purposes
         if False: print(X.shape); print(y.shape)
         if False: rgb_image_viewer(X.cpu().detach())
-        if False: rgb_image_viewer(y_pred.cpu().detach())
-        if False: rgb_image_viewer(y.cpu().detach())
+        if False: image_viewer(y_pred.cpu().detach(), vmin=-1, vmax=1)
+        if False: image_viewer(y.cpu().detach(), vmin=-1, vmax=1)
 
         if index % settings.training['iterations_per_update'] == 0:
             # update the network parameters and reset the gradient
             optimizer.step()
             optimizer.zero_grad() # set the gradient to 0 again
 
-            # store loss value
-            training_loss.append(sum(accum_loss))
-            last_training_losses = training_loss[len(training_loss)-N_weighted_avg:]
-            avg_training_loss.append(sum(last_training_losses)/len(last_training_losses))
-            logger.info(
-                (f'Iteration {str(index).zfill(4)}:'
-                f'   Training loss (batch): {training_loss[-1]:0.3f},'
-                f'   Training loss (running average): {avg_training_loss[-1]:0.3f}'),
-            )
-            accum_loss = []
+            # log values of loss components and combined
+            message = f'Iteration {str(index).zfill(4)}:'
+            combined = 0
+            for name in update_losses:
+                value = sum(
+                    iteration_losses[name][-settings.training['iterations_per_update']:]
+                )
+                combined += value
+                message += f'   Training loss ({name}): {value:0.3f},'
+                update_losses[name].append(value)
+            
+            training_loss.append(combined)
+            message += f'   Training loss (combined): {combined:0.3f},'
+            logger.info(message)
 
         # --------------- VALIDATION ------------------
         # periodically evaluate on the validation set
@@ -383,10 +436,10 @@ if __name__ == '__main__':
 
                     # for debugging purposes
                     if False: rgb_image_viewer(X.cpu())
-                    if False: rgb_image_viewer(y_pred.cpu())
-                    if False: rgb_image_viewer(y.cpu())
+                    if False: image_viewer(y_pred.cpu(), vmin=-1, vmax=1)
+                    if False: image_viewer(y.cpu(), vmin=-1, vmax=1)
 
-                    loss_values.append(loss_function(y_pred, y).item())
+                    loss_values.append(sum(loss_function(y_pred, y).values()).item())
 
             validation_index.append(index)
             validation_loss.append(sum(loss_values)/len(loss_values))
@@ -412,11 +465,9 @@ if __name__ == '__main__':
     # plot loss
     ax.plot(list(range(1, len(training_loss)+1)), training_loss, zorder=1,
             color='dodgerblue', alpha=0.25, label='Training loss')
-    ax.plot(list(range(1, len(avg_training_loss)+1)), avg_training_loss, zorder=2,
-            color='dodgerblue', alpha=0.5, label='Training loss (running average)')
     ax.plot(validation_index, validation_loss, color='royalblue',
-            zorder=3, label='Validation loss')
-    ax.scatter(validation_index, validation_loss, zorder=3, marker='o', 
+            zorder=2, label='Validation loss')
+    ax.scatter(validation_index, validation_loss, zorder=2, marker='o', 
                facecolor='white', edgecolor='royalblue', linewidth=1.5, s=15)
 
     # change axis setup

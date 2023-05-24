@@ -19,7 +19,8 @@ Annotate low magnification whole slide images in the dataset.
 import natsort
 
 from annotation_tool import AnnotationTool
-from config import images_folder, annotations_folder
+from config import annotations_folder, images_folder
+
 
 # define names        
 classes = ['Tissue', 'Pen marking']

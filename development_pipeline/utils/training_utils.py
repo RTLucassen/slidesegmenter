@@ -16,19 +16,11 @@
 Utility classes for training neural networks.
 """
 
-import os
-import sys
-import platform
-
-if platform.system() == 'Linux':
-    sys.path.append('..')
-elif platform.system() == 'Windows':
-    sys.path.append(os.path.join(__file__, '..', '..'))
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Union
 
 
 class DiceLoss(nn.Module):
@@ -36,11 +28,13 @@ class DiceLoss(nn.Module):
     def __init__(
         self, 
         sigmoid: bool = False, 
-        class_weights: list[float] = None,
+        class_weights: Optional[list[float]] = None,
         smooth_nom: float = 1, 
         smooth_denom: float = 1,
     ) -> None:
         """
+        Initialize Dice loss.
+
         Args:
             sigmoid: specify if a sigmoid instead of a softmax function is applied.
                      if there is only a single class, the sigmoid is automatically used.
@@ -58,9 +52,12 @@ class DiceLoss(nn.Module):
 
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             logit: logit predictions of shape: (batch, class, X, Y, ...).
             y_true: true labels of shape: (batch, class, X, Y, ...).
+        
         Returns:
             loss: Dice loss averaged over all images in the batch.
         """
@@ -110,13 +107,15 @@ class TverskyLoss(nn.Module):
     def __init__(
         self, 
         sigmoid: bool = False, 
-        class_weights: list[float] = None,
+        class_weights: Optional[list[float]] = None,
         fp_weight: float = 0.5,
         fn_weight: float = 0.5,
         smooth_nom: float = 1, 
         smooth_denom: float = 1,
     ) -> None:
         """
+        Initialize Tversky loss.
+
         Args:
             sigmoid: specify if a sigmoid instead of a softmax function is applied.
                      if there is only a single class, the sigmoid is automatically used.
@@ -138,11 +137,14 @@ class TverskyLoss(nn.Module):
 
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             logit: logit predictions of shape: (batch, class, X, Y, ...).
             y_true: true labels of shape: (batch, class, X, Y, ...).
+        
         Returns:
-            loss: Dice loss averaged over all images in the batch.
+            loss: Tversky loss averaged over all images in the batch.
         """
         # check if the logit prediction and true labels are of equal shape
         if logit.shape != y_true.shape:
@@ -193,9 +195,11 @@ class FocalLoss(nn.Module):
         self,
         sigmoid: bool = False, 
         gamma: float = 0.0,
-        class_weights: torch.Tensor = None,
+        class_weights: Optional[torch.Tensor] = None,
     ) -> None:
         """
+        Initialize focal loss.
+
         Args:
             sigmoid: specify if a sigmoid instead of a softmax function is applied.
                      if there is only a single class, the sigmoid is automatically used.
@@ -210,9 +214,12 @@ class FocalLoss(nn.Module):
 
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             logit: logit predictions volumes of shape: (batch, class, X, Y, ...).
             y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+        
         Returns:
             loss: focal loss averaged over all images in the batch.
         """
@@ -262,48 +269,7 @@ class FocalLoss(nn.Module):
         loss = torch.mean(instance_loss)
 
         return loss
-
-
-class TverskyFocalLoss(nn.Module):
-
-    def __init__(
-        self, 
-        weights: list = None, 
-        fp_weight: float = 0.5, 
-        fn_weight: float = 0.5, 
-        gamma: float = 0.0,
-    ) -> None:
-        super().__init__()
-        # initialize weights
-        self.weights = weights if weights is not None else [1, 1]
-        
-        # initialize loss components
-        self.tversky_loss = TverskyLoss(
-            sigmoid=True,
-            fp_weight=fp_weight, 
-            fn_weight=fn_weight, 
-        )
-        self.focal_loss = FocalLoss(
-            sigmoid=True,
-            gamma=gamma, 
-        )
-
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """ 
-        Args:
-            y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
-            y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
-        Returns:
-            loss: Combined loss averaged over all images in the batch.
-        """
-        # calculate the combined loss
-        loss = (
-            self.weights[0]*self.tversky_loss(y_pred, y_true) +
-            self.weights[1]*self.focal_loss(y_pred, y_true)
-        )
-
-        return loss
-
+    
 
 class MSELoss(nn.Module):
 
@@ -312,9 +278,12 @@ class MSELoss(nn.Module):
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
             y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+        
         Returns:
             loss: MSE loss averaged over all images in the batch.
         """
@@ -343,9 +312,12 @@ class MAELoss(nn.Module):
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
             y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+        
         Returns:
             loss: MAE loss averaged over all images in the batch.
         """
@@ -372,13 +344,31 @@ class CombinedLoss(nn.Module):
     def __init__(
         self, 
         device: str, 
-        weights: list = None, 
-        class_weights: list = None,
+        weights: Optional[list] = None, 
+        class_weights: Optional[list] = None,
         fp_weight: float = 0.5, 
         fn_weight: float = 0.5, 
         gamma: float = 0.0,
     ) -> None:
+        """
+        Initialize combination of Tversky and focal loss for segmentation, as well 
+        as the combination of MSE loss with respect to the predicted distance map 
+        and the gradient of the predicted distance map.
+
+        Args:
+            device:     
+            weights: if not None, compute a weighted average of the losses. 
+            class_weights: if not None, compute a weighted average of the loss for the classes. 
+            fp_weight: weighting factor for false positives (alpha in paper).
+            fn_weight: weighting factor for false negatives (beta in paper).
+            gamma: parameter that governs the relative importance of incorrect predictions.
+                   if gamma == 0.0, the focal loss is equal to the cross-entropy loss.
+        """
         super().__init__()
+
+        # define loss names
+        self.names = ['tversky', 'focal', 'MSE dist', 'MSE grad dist']
+
         # initialize weights
         self.weights = weights if weights is not None else [1, 1, 1, 1]
         class_weights = class_weights if class_weights is not None else [1]
@@ -407,31 +397,35 @@ class CombinedLoss(nn.Module):
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
+        Forward pass.
+        
         Args:
             y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
             y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+        
         Returns:
             loss: Combined loss averaged over all images in the batch.
         """
         # calculate the combined loss
-        loss = (
-            self.weights[0]*self.tversky_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]) +
-            self.weights[1]*self.focal_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]) +
-            self.weights[2]*self.MSE_loss(y_pred[:, 2:, ...], y_true[:, 2:, ...]) +
-            self.weights[3]*self.MSE_loss(
+        losses = {
+            'tversky': self.weights[0]*self.tversky_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]),
+            'focal': self.weights[1]*self.focal_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]),
+            'MSE dist': self.weights[2]*self.MSE_loss(y_pred[:, 2:, ...], y_true[:, 2:, ...]),
+            'MSE grad dist': self.weights[3]*self.MSE_loss(
                 F.conv2d(y_pred[:, 2:, ...], self.grad_kernel), 
-                F.conv2d(y_true[:, 2:, ...], self.grad_kernel))
-        )
+                F.conv2d(y_true[:, 2:, ...], self.grad_kernel),
+            ),
+        }
 
-        return loss
+        return losses
 
 
 def dice_score(
     y_hat: torch.Tensor, 
     y_true: torch.Tensor, 
-    class_weights: list[float] = None,
+    class_weights: Optional[list[float]] = None,
     smooth_denom: float = 1e-8,
-) -> Union[float, list[float]]:
+) -> torch.Tensor:
     """
     Calculates the Dice score.
 
@@ -442,7 +436,7 @@ def dice_score(
         smooth_denom: small value added to the denominator to prevent division 
                       by zero errors and to better handle negative cases.
     Returns:
-        loss: Dice score for all predictions in the batch.
+        score: Dice score for all items in the batch.
     """
     # check if the logit prediction and true labels are of equal shape
     if y_hat.shape != y_true.shape:

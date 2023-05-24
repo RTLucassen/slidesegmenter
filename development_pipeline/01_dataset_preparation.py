@@ -20,14 +20,13 @@ import SimpleITK as sitk
 from tqdm import tqdm
 
 from slideloader import SlideLoader
-from config import raw_folder, images_folder
+from config import images_folder, raw_folder
+
 
 # define settings
 subfolder = 'other'
 magnification = 1.25 # (low) magnification value
 extension = 'png'
-
-#TODO: Remove str() with pathlib objects for slideloader once this is possible
 
 if __name__ == '__main__':
 

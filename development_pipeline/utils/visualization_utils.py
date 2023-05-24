@@ -16,20 +16,12 @@
 Utility classes for visualization of batches of images
 """
 
-import os
-import sys
-import platform
+from typing import Union
 
-if platform.system() == 'Linux':
-    sys.path.append('..')
-elif platform.system() == 'Windows':
-    sys.path.append(os.path.join(__file__, '..', '..'))
-
-import torch
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from typing import Union
+import numpy as np
+import torch
 
 
 class Index:
@@ -87,6 +79,8 @@ class BasicEventTracker:
         idx: int = 0,
     ) -> None:
         """ 
+        Initialize BasicEventTracker instance.
+
         Args:
             ax: matplotlib.pyplot figure axis.
             image_tensor: batch of images with the shape: 
@@ -118,9 +112,6 @@ class BasicEventTracker:
         when scrolling up or down respectively.
         Update the image frame afterwards. Do not update the index when 
         scolling up for the last or down for the first image.
-
-        Args:
-            event: mouse event (up or down scroll).
         """
         if event.button == 'up':
             # update the index after scolling
@@ -134,9 +125,7 @@ class BasicEventTracker:
 
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
-        Args:
-            event: key event (press) that is checked for a connected action.
-                   If there is one, the implemented action is performed.
+        Increase the scrolling speed while 'SHIFT' is pressed.
         """
         # for handling multiple keys when pressed at once
         for key in event.key.split('+'): 
@@ -146,9 +135,7 @@ class BasicEventTracker:
 
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
-        Args:
-            event: key event (release) that is checked for a connected action.
-                   If there is one, the implemented action is performed.
+        Reset the scrolling speed when 'SHIFT' is released.
         """
         # for handling multiple keys when pressed at once
         for key in event.key.split('+'):
@@ -166,14 +153,13 @@ class BasicEventTracker:
             f'Instance: {self.__idx.current()}/{self.__idx.maximum()}',
         )
         self.__image.set_data(image)
-
         # update the canvas
         self.__ax.figure.canvas.draw()
 
 
 class EventTracker:
     """
-    Tool for visualization of a serie of images.
+    Tool for visualization of a batch of images.
     Use the scroll wheel to scroll through the images.
     Press 'SHIFT' to scroll at a higher scrolling speed.
     Press 'CONTROL' to scroll through the channels.
@@ -193,6 +179,8 @@ class EventTracker:
         vmax: float = 1.0,
     ) -> None:
         """ 
+        Initialize EventTracker instance.
+
         Args:
             ax: matplotlib.pyplot figure axis.
             image_tensor: batch of images with the shape: 
@@ -220,7 +208,6 @@ class EventTracker:
             vmax=vmax, 
             cmap=cmap,
         )
-
         # initialize objects to track the class and instance index
         self.__idx = Index(idx, 0, self.__image_tensor.shape[0]-1)
         self.__class_idx = Index(class_idx, 0, self.__image_tensor.shape[1]-1)
@@ -235,9 +222,6 @@ class EventTracker:
         (either instance or class) when scrolling up or down respectively.
         Update the image frame afterwards. Do not update the index when 
         scolling up for the last or down for the first image.
-
-        Args:
-            event: mouse event (up or down scroll).
         """
         if event.button == 'up':
             # update the index after scolling
@@ -251,9 +235,7 @@ class EventTracker:
 
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
-        Args:
-            event: key event (press) that is checked for a connected action.
-                   If there is one, the implemented action is performed.
+        Increase the scrolling speed when 'SHIFT' is pressed.
         """
         # for handling multiple keys when pressed at once
         for key in event.key.split('+'): 
@@ -266,9 +248,7 @@ class EventTracker:
 
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
-        Args:
-            event: key event (release) that is checked for a connected action.
-                   If there is one, the implemented action is performed.
+        Reset the scrolling speed when 'SHIFT' is released.
         """
         # for handling multiple keys when pressed at once
         for key in event.key.split('+'):
