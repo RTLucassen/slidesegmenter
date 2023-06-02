@@ -20,7 +20,7 @@ and semantic segmentation of pen markings.
 import json
 from math import ceil, floor
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import torch
 import numpy as np
@@ -37,13 +37,14 @@ CHECKPOINT_FILE = 'model_checkpoint.tar'
 class SlideSegmenter:
     """
     Class for segmenting tissue and pen markings on low resolution (1.25x)
-    whole slide images. The class is responsible for preprocessing 
-    (i.e., padded to a valid size), running model inference to get the segmentations, 
-    and post-processing (i.e., cropping to the original size and optionally 
-    separating tissue cross-sections).
+    whole slide images. The class is responsible for:
+    (1) preprocessing (i.e., padded to a valid size) 
+    (2) running model inference to get the segmentations
+    (3) post-processing (i.e., cropping to the original size and optionally 
+        separating tissue cross-sections).
     """
-
     # define parameter settings for segmentation and distance map correction
+    default_threshold = 0.5
     padding_mode = 'constant'
     padding_value = 0  # in case of 'constant' padding mode
     offset_factor = 100
@@ -56,8 +57,8 @@ class SlideSegmenter:
     
     def __init__(
         self, 
-        threshold: float = 0.9,
         channels_last: bool = True,
+        return_binary_segmentation: bool = True,
         return_offset_maps: bool = False,
         device: str = 'cpu', 
     ) -> None:
@@ -65,13 +66,15 @@ class SlideSegmenter:
         Initialize SlideSegmenter instance.
 
         Args:
-            threshold: threshold value for binarizing the predicted segmentation.
             channels_last: indicates whether the input is expected to have 
                            the channels dimension after the spatial dimension.
                            If False, channels first is assumed.
+            return_binary_segmentation: indicates whether the predicted segmentation 
+                                        is binarized based on the threshold value.
             return_offset_maps: indicates whether predicted horizontal and vertical 
                                 offset maps are additionally returned.
-            device: specifies whether the pytorch model is executed on cpu or gpu.
+            device: specifies whether the pytorch model inference is performed 
+                    on the cpu or gpu.
         """
         # load model settings
         with open(Path(model.__file__).parent / SETTINGS_FILE, 'r') as f:
@@ -89,8 +92,8 @@ class SlideSegmenter:
         self.model.eval()
         
         # create instance attributes
-        self.threshold = threshold
         self.channels_last = channels_last
+        self.return_binary_segmentation = return_binary_segmentation
         self.return_offset_maps = return_offset_maps
 
         # determine by what value the image height and width must be divisible
@@ -99,12 +102,13 @@ class SlideSegmenter:
     def segment(
         self, 
         image: Union[np.ndarray, torch.Tensor],
+        threshold: Optional[float] = None,
         separate_cross_sections: bool = True,
     ) -> Union[np.ndarray, tuple]:
         """
         Steps in segmentation pipeline:
         (1) Preprocess the image by adding padding to make the length of the 
-        height and width valid.
+            height and width valid.
         (2) Predict the tissue and pen marking segmentation for the image. 
         (3) Post-process the segmentation by cropping it to the original size.
         (4) Optionally divide the tissue segmentations into separate cross-sections.
@@ -112,6 +116,7 @@ class SlideSegmenter:
         Args:
             image: whole slide image (at 1.25x) [uint8] as (height, width, channel)
                    for channels last or (channel, height, width) for channels first.
+            threshold: threshold value for binarizing the predicted segmentation.
             separate_cross_sections: indicates whether the tissue segmentation
                                      should be returned as separate cross-sections.
         Returns:
@@ -119,9 +124,13 @@ class SlideSegmenter:
                           as (height, width, channel) for channels last or 
                           (channel, height, width) for channels first.
             horizontal_offset: image with predicted horizontal offset [float32]
-                               with respect to corresponding centroid.
+                               with respect to centroid as (height, width, channel) 
+                               for channels last or (channel, height, width) 
+                               for channels first.
             vertical_offset: image with predicted vertical offset [float32]
-                             with respect to corresponding centroid.
+                             with respect to centroid as (height, width, channel) 
+                             for channels last or (channel, height, width) 
+                             for channels first.
         """
         # check image object type, convert to numpy array if necessary
         if isinstance(image, torch.Tensor):
@@ -129,7 +138,7 @@ class SlideSegmenter:
         elif not isinstance(image, np.ndarray):
             raise TypeError('Invalid type of input argument for image.')
         
-        # check if the images intensities are in the range of 0.0-1.0
+        # check if the image intensities are in the range of 0.0-1.0
         if np.min(image) < 0 or np.max(image) > 1:
             raise ValueError('Invalid image intensities (must be in the range 0.0-1.0)')
 
@@ -179,56 +188,80 @@ class SlideSegmenter:
         top = padding[1][0]
         left = padding[2][0]
         prediction = prediction[:, top:top+height, left:left+width]
+        
         # separate the channels and apply the final activation functions
         segmentation = torch.sigmoid(prediction[0, ...]).numpy()
         horizontal_offset = prediction[1, ...].numpy()
         vertical_offset = prediction[2, ...].numpy()
+        
+        # binarize the segmentation based on the threshold value
+        threshold = self.default_threshold if threshold is None else threshold
+        binary_segmentation = np.where(segmentation >= threshold, 1, 0).astype(np.uint8)
 
-        # create cross-sections
+        # separate the cross-sections based on the predicted offset maps
         if separate_cross_sections:
-            segmentation, _ = self._separate_cross_sections(
-                segmentation, 
+            separated_cross_sections, _ = self._separate_cross_sections(
+                binary_segmentation, 
                 horizontal_offset, 
                 vertical_offset,
             )
-
-        # change channels first / last
-
-        if self.return_offset_maps:
-            return segmentation, horizontal_offset, vertical_offset
+            # separate cross-sections as separate channels
+            segmentation = segmentation[..., None]*separated_cross_sections
+            binary_segmentation = separated_cross_sections
         else:
-            return segmentation
+            # add extra channel
+            segmentation = segmentation[..., None]
+            binary_segmentation = binary_segmentation[..., None]
+        # add extra channel
+        horizontal_offset = horizontal_offset[..., None]
+        vertical_offset = vertical_offset[..., None]
+
+        # change last channel to first channel
+        if not self.channels_last:
+            segmentation = segmentation.transpose((2, 0, 1))
+            binary_segmentation = binary_segmentation.transpose((2, 0, 1))
+            horizontal_offset = horizontal_offset.transpose((2, 0, 1))
+            vertical_offset = vertical_offset.transpose((2, 0, 1))
+
+        # return the requested output
+        if self.return_offset_maps:
+            if self.return_binary_segmentation:
+                return binary_segmentation, horizontal_offset, vertical_offset
+            else:
+                return segmentation, horizontal_offset, vertical_offset
+        else:
+            if self.return_binary_segmentation:
+                return binary_segmentation
+            else:
+                return segmentation
 
     def _separate_cross_sections(
         self,
-        segmentation: torch.Tensor, 
-        horizontal_offset: torch.Tensor,
-        vertical_offset: torch.Tensor, 
-    ) -> torch.Tensor:
+        segmentation: np.ndarray, 
+        horizontal_offset: np.ndarray,
+        vertical_offset: np.ndarray, 
+    ) -> tuple[np.ndarray, list[tuple[float, float]]]:
         """
         Separate cross-sections in the predicted segmentation map,
         based on the predicted horizontal and vertical distance maps.
 
         Args:
-            segmentation: segmentation for whole slide image [float32] (at 1.25x) 
-                          as (height, width, channel) for channels last or 
-                          (channel, height, width) for channels first.
+            segmentation: segmentation for whole slide image [uint8] (at 1.25x) 
+                          as (height, width).
             horizontal_offset: image with predicted horizontal offset [float32]
-                               with respect to corresponding centroid.
+                               with respect to centroid as (height, width).
             vertical_offset: image with predicted vertical offset [float32]
-                             with respect to corresponding centroid.
+                             with respect to centroid as (height, width).
         Returns:
-            nearest_centroid_map: segmentation for whole slide image [float32] 
-                                  (at 1.25x)
-                          as (height, width, channel) for channels last or 
-                          (channel, height, width) for channels first.
+            nearest_centroid_map: segmentation for whole slide image [uint8] 
+                                  (at 1.25x) as (height, width, channel).
             centroid_coords: coordinates of extracted centroids.
         """
         # initialize a variable with the image shape
         image_shape = segmentation.shape
 
         # create a vector with the binarized segmentation result for masking    
-        mask = np.where(segmentation >= self.threshold, True, False).reshape((-1,))
+        mask = segmentation.astype(bool).reshape((-1,))
 
         # create horizontal and vertical grid
         vertical_map, horizontal_map = np.meshgrid(
@@ -291,8 +324,13 @@ class SlideSegmenter:
         horizontal_flat = horizontal_map.reshape((-1,)).astype(np.uint16)[mask]
         vertical_flat = vertical_map.reshape((-1,)).astype(np.uint16)[mask]
         
-        # convert back from the nearest centroid vector to the image
-        nearest_centroid_map = np.zeros(image_shape)
+        # convert the nearest centroid vector to the image shape 
+        nearest_centroid_map = np.zeros(image_shape, dtype=np.uint8)
         nearest_centroid_map[vertical_flat, horizontal_flat] = nearest_centroid_flat
+
+        # assign each cross-section to a separate channel
+        index_map = np.tile(np.arange(1, len(centroid_coords)+1)[None, None, ...], 
+                            (*image_shape, 1))
+        nearest_centroid_map = np.where(nearest_centroid_map[..., None] == index_map, 1, 0)
 
         return nearest_centroid_map, centroid_coords
