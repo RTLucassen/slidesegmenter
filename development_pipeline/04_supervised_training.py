@@ -33,6 +33,7 @@ import random
 from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -54,7 +55,7 @@ from utils.visualization_utils import image_viewer, rgb_image_viewer
 # define settings class
 class Settings():
 
-    def __init__(self, settings: dict) -> None:
+    def __init__(self, settings: dict[str, Any]) -> None:
         """
         Initialize settings
 

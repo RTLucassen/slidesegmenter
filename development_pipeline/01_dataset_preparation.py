@@ -35,14 +35,14 @@ if __name__ == '__main__':
     images_subfolder.mkdir()
 
     # define slide handler instance for loading and saving WSIs
-    slide_handler = SlideLoader()
-    slide_handler.progress_bar = False
+    loader = SlideLoader()
+    loader.progress_bar = False
 
     # loop over all WSIs
     for path in tqdm(list(raw_folder.iterdir())):
         # load high magnification WSI and return low magnification image
-        slide_handler.load_slide(str(path))
-        image = slide_handler.get_image(magnification)[None, ...]
+        loader.load_slide(str(path))
+        image = loader.get_image(magnification)[None, ...]
 
         # save the low magnification image
         path = images_subfolder / f'{path.stem}.{extension}'

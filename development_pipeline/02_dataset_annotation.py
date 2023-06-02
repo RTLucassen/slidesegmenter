@@ -37,7 +37,7 @@ if __name__ == '__main__':
     images_subfolder = images_folder / subfolder
     annotations_subfolder = annotations_folder / subfolder
 
-    # if the annotation folder already exists and get all filenames from annotations
+    # get all filenames from annotations if the annotation folder already exists
     if not annotations_subfolder.exists():
         annotations_subfolder.mkdir()
         annotation_paths = [] 

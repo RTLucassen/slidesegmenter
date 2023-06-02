@@ -16,25 +16,38 @@
 Utility class for instance segmentation of tissue cross-sections 
 and semantic segmentation of pen markings.
 """
+
 import json
+from math import ceil, floor
+from pathlib import Path
+from typing import Union
+
 import torch
 import numpy as np
-from pathlib import Path
-from math import floor, ceil
 from scipy.ndimage import gaussian_filter, maximum_filter
-from typing import Union
+
 from ._model_utils import AdaptedUNet
 from . import model
 
+
+# define settings
 SETTINGS_FILE = 'settings.json'
 CHECKPOINT_FILE = 'model_checkpoint.tar'
 
 class SlideSegmenter:
+    """
+    Class for segmenting tissue and pen markings on low resolution (1.25x)
+    whole slide images. The class is responsible for preprocessing 
+    (i.e., padded to a valid size), running model inference to get the segmentations, 
+    and post-processing (i.e., cropping to the original size and optionally 
+    separating tissue cross-sections).
+    """
 
     # define parameter settings for segmentation and distance map correction
     padding_mode = 'constant'
-    padding_value = 0    # in case of constant padding mode
+    padding_value = 0  # in case of 'constant' padding mode
     offset_factor = 100
+    
     # define parameter values for separating cross sections
     bins = 200
     sigma = 2.5
@@ -84,13 +97,31 @@ class SlideSegmenter:
         self.divisor = np.prod(settings['model']['downsample_factors'])
 
     def segment(
-            self, 
-            image: Union[np.ndarray, torch.Tensor],
-            separate_cross_sections: bool = True,
-        ) -> Union[np.ndarray, tuple]:
+        self, 
+        image: Union[np.ndarray, torch.Tensor],
+        separate_cross_sections: bool = True,
+    ) -> Union[np.ndarray, tuple]:
         """
-        return the segmentation maps predicted by the model, which includes:
-            - tissue cross-sections as separate instances
+        Steps in segmentation pipeline:
+        (1) Preprocess the image by adding padding to make the length of the 
+        height and width valid.
+        (2) Predict the tissue and pen marking segmentation for the image. 
+        (3) Post-process the segmentation by cropping it to the original size.
+        (4) Optionally divide the tissue segmentations into separate cross-sections.
+
+        Args:
+            image: whole slide image (at 1.25x) [uint8] as (height, width, channel)
+                   for channels last or (channel, height, width) for channels first.
+            separate_cross_sections: indicates whether the tissue segmentation
+                                     should be returned as separate cross-sections.
+        Returns:
+            segmentation: segmentation for whole slide image [float32] (at 1.25x) 
+                          as (height, width, channel) for channels last or 
+                          (channel, height, width) for channels first.
+            horizontal_offset: image with predicted horizontal offset [float32]
+                               with respect to corresponding centroid.
+            vertical_offset: image with predicted vertical offset [float32]
+                             with respect to corresponding centroid.
         """
         # check image object type, convert to numpy array if necessary
         if isinstance(image, torch.Tensor):
@@ -149,24 +180,26 @@ class SlideSegmenter:
         left = padding[2][0]
         prediction = prediction[:, top:top+height, left:left+width]
         # separate the channels and apply the final activation functions
-        tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+        segmentation = torch.sigmoid(prediction[0, ...]).numpy()
         horizontal_offset = prediction[1, ...].numpy()
         vertical_offset = prediction[2, ...].numpy()
 
         # create cross-sections
         if separate_cross_sections:
-            tissue_segmentation, _ = self.separate_cross_sections(
-                tissue_segmentation, 
+            segmentation, _ = self._separate_cross_sections(
+                segmentation, 
                 horizontal_offset, 
                 vertical_offset,
             )
 
-        if self.return_offset_maps:
-            return tissue_segmentation, horizontal_offset, vertical_offset
-        else:
-            return tissue_segmentation
+        # change channels first / last
 
-    def separate_cross_sections(
+        if self.return_offset_maps:
+            return segmentation, horizontal_offset, vertical_offset
+        else:
+            return segmentation
+
+    def _separate_cross_sections(
         self,
         segmentation: torch.Tensor, 
         horizontal_offset: torch.Tensor,
@@ -175,6 +208,21 @@ class SlideSegmenter:
         """
         Separate cross-sections in the predicted segmentation map,
         based on the predicted horizontal and vertical distance maps.
+
+        Args:
+            segmentation: segmentation for whole slide image [float32] (at 1.25x) 
+                          as (height, width, channel) for channels last or 
+                          (channel, height, width) for channels first.
+            horizontal_offset: image with predicted horizontal offset [float32]
+                               with respect to corresponding centroid.
+            vertical_offset: image with predicted vertical offset [float32]
+                             with respect to corresponding centroid.
+        Returns:
+            nearest_centroid_map: segmentation for whole slide image [float32] 
+                                  (at 1.25x)
+                          as (height, width, channel) for channels last or 
+                          (channel, height, width) for channels first.
+            centroid_coords: coordinates of extracted centroids.
         """
         # initialize a variable with the image shape
         image_shape = segmentation.shape
