@@ -268,11 +268,11 @@ class AdaptedUNet(nn.Module):
             'down3':    Down(int(  4 * self.filters), int(  8 * self.filters),                          self.activation, self.normalization, self.downsample_factors[2], self.downsample_method),
             'down4':    Down(int(  8 * self.filters), int( 16 * self.filters),                          self.activation, self.normalization, self.downsample_factors[3], self.downsample_method),
             'down5':    Down(int( 16 * self.filters), int( 16 * self.filters),                          self.activation, None,               self.downsample_factors[4], self.downsample_method),
-            # 'up_pen1': Up(  int( 16 * self.filters), int( 16 * self.filters), int( 16 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method),
-            # 'up_pen2': Up(  int( 16 * self.filters), int(  8 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method),
-            # 'up_pen3': Up(  int(  8 * self.filters), int(  4 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method),
-            # 'up_pen4': Up(  int(  4 * self.filters), int(  2 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method),
-            # 'up_pen5': Up(  int(  2 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method),
+            'up_pen1': Up(  int( 16 * self.filters), int( 16 * self.filters), int( 16 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method),
+            'up_pen2': Up(  int( 16 * self.filters), int(  8 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method),
+            'up_pen3': Up(  int(  8 * self.filters), int(  4 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method),
+            'up_pen4': Up(  int(  4 * self.filters), int(  2 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method),
+            'up_pen5': Up(  int(  2 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method),
             'up_tissue1':  Up(  int( 16 * self.filters), int( 16 * self.filters), int( 16 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method),
             'up_tissue2':  Up(  int( 16 * self.filters), int(  8 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method),
             'up_tissue3':  Up(  int(  8 * self.filters), int(  4 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method),
@@ -283,11 +283,10 @@ class AdaptedUNet(nn.Module):
             'up_distance3':  Up(  int(  8 * self.filters), int(  4 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method),
             'up_distance4':  Up(  int(  4 * self.filters), int(  2 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method),
             'up_distance5':  Up(  int(  2 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method),
-            # 'final_conv_pen': nn.Conv2d(self.filters, 1, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
+            'final_conv_pen': nn.Conv2d(self.filters, 1, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
             'final_conv_tissue': nn.Conv2d(self.filters, 1, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
             'final_conv_distance': nn.Conv2d(self.filters, 2, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
         })
-
         # recursively apply the initialize_weights method 
         # to all convolutional layers to initialize weights
         self.layers.apply(self.initialize_weights)
@@ -308,12 +307,12 @@ class AdaptedUNet(nn.Module):
         x5 = self.layers['down4'](x4)
         x = self.layers['down5'](x5)
         # # pen segmentation decoder
-        # x_pen = self.layers['up_pen1'](x5, x)
-        # x_pen = self.layers['up_pen2'](x4, x_pen)
-        # x_pen = self.layers['up_pen3'](x3, x_pen)
-        # x_pen = self.layers['up_pen4'](x2, x_pen)
-        # x_pen = self.layers['up_pen5'](x1, x_pen)
-        # out_pen = self.layers['final_conv_pen'](x_pen)
+        x_pen = self.layers['up_pen1'](x5, x)
+        x_pen = self.layers['up_pen2'](x4, x_pen)
+        x_pen = self.layers['up_pen3'](x3, x_pen)
+        x_pen = self.layers['up_pen4'](x2, x_pen)
+        x_pen = self.layers['up_pen5'](x1, x_pen)
+        out_pen = self.layers['final_conv_pen'](x_pen)
         # tissue segmentation and distance map decoder
         x_tissue = self.layers['up_tissue1'](x5, x)
         x_tissue = self.layers['up_tissue2'](x4, x_tissue)
@@ -330,8 +329,7 @@ class AdaptedUNet(nn.Module):
         out_distance = self.layers['final_conv_distance'](x_distance)
 
         out = torch.concat(
-            [out_tissue, torch.sigmoid(out_tissue)*out_distance], 
-            #[out_tissue, out_pen, torch.sigmoid(out_tissue)*out_distance],
+            [out_tissue, out_pen, torch.sigmoid(out_tissue)*out_distance],
             dim=1,
         )
 

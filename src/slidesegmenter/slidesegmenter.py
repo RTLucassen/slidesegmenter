@@ -58,7 +58,8 @@ class SlideSegmenter:
     def __init__(
         self, 
         channels_last: bool = True,
-        return_binary_segmentation: bool = True,
+        binarize_segmentation: bool = True,
+        return_pen_segmentation: bool = True,
         return_offset_maps: bool = False,
         device: str = 'cpu', 
     ) -> None:
@@ -69,10 +70,12 @@ class SlideSegmenter:
             channels_last: indicates whether the input is expected to have 
                            the channels dimension after the spatial dimension.
                            If False, channels first is assumed.
-            return_binary_segmentation: indicates whether the predicted segmentation 
-                                        is binarized based on the threshold value.
+            binarize_segmentation: indicates whether the predicted segmentation 
+                                   is binarized based on the threshold value.
+            return_pen_segmentation: indicates whether the predicted pen segmentation
+                                     is returned.
             return_offset_maps: indicates whether predicted horizontal and vertical 
-                                offset maps are additionally returned.
+                                offset maps are returned.
             device: specifies whether the pytorch model inference is performed 
                     on the cpu or gpu.
         """
@@ -93,11 +96,13 @@ class SlideSegmenter:
         
         # create instance attributes
         self.channels_last = channels_last
-        self.return_binary_segmentation = return_binary_segmentation
+        self.binarize_segmentation = binarize_segmentation
+        self.return_pen_segmentation = return_pen_segmentation
         self.return_offset_maps = return_offset_maps
 
         # determine by what value the image height and width must be divisible
         self.divisor = np.prod(settings['model']['downsample_factors'])
+
 
     def segment(
         self, 
@@ -190,50 +195,64 @@ class SlideSegmenter:
         prediction = prediction[:, top:top+height, left:left+width]
         
         # separate the channels and apply the final activation functions
-        segmentation = torch.sigmoid(prediction[0, ...]).numpy()
-        horizontal_offset = prediction[1, ...].numpy()
-        vertical_offset = prediction[2, ...].numpy()
+        tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+        pen_segmentation = torch.sigmoid(prediction[1, ...]).numpy()
+        horizontal_offset = prediction[2, ...].numpy()
+        vertical_offset = prediction[3, ...].numpy()
         
-        # binarize the segmentation based on the threshold value
+        # binarize the segmentations based on the threshold value
         threshold = self.default_threshold if threshold is None else threshold
-        binary_segmentation = np.where(segmentation >= threshold, 1, 0).astype(np.uint8)
+        binary_tissue_segmentation = np.where(tissue_segmentation >= threshold, 1, 0)
+        binary_tissue_segmentation = binary_tissue_segmentation.astype(np.uint8)
+        
+        binary_pen_segmentation = np.where(tissue_segmentation >= threshold, 1, 0)
+        binary_pen_segmentation = binary_pen_segmentation.astype(np.uint8)
 
         # separate the cross-sections based on the predicted offset maps
         if separate_cross_sections:
             separated_cross_sections, _ = self._separate_cross_sections(
-                binary_segmentation, 
+                binary_tissue_segmentation, 
                 horizontal_offset, 
                 vertical_offset,
             )
             # separate cross-sections as separate channels
-            segmentation = segmentation[..., None]*separated_cross_sections
-            binary_segmentation = separated_cross_sections
+            tissue_segmentation = tissue_segmentation[..., None]*separated_cross_sections
+            binary_tissue_segmentation = separated_cross_sections
         else:
             # add extra channel
-            segmentation = segmentation[..., None]
-            binary_segmentation = binary_segmentation[..., None]
+            tissue_segmentation = tissue_segmentation[..., None]
+            binary_tissue_segmentation = binary_tissue_segmentation[..., None]
+        
         # add extra channel
+        pen_segmentation = pen_segmentation[..., None]
+        binary_pen_segmentation = binary_pen_segmentation[..., None]
         horizontal_offset = horizontal_offset[..., None]
         vertical_offset = vertical_offset[..., None]
 
         # change last channel to first channel
         if not self.channels_last:
-            segmentation = segmentation.transpose((2, 0, 1))
-            binary_segmentation = binary_segmentation.transpose((2, 0, 1))
+            tissue_segmentation = tissue_segmentation.transpose((2, 0, 1))
+            binary_tissue_segmentation = binary_tissue_segmentation.transpose((2, 0, 1))
+            pen_segmentation = pen_segmentation.transpose((2, 0, 1))
+            binary_pen_segmentation = binary_pen_segmentation.transpose((2, 0, 1))
             horizontal_offset = horizontal_offset.transpose((2, 0, 1))
             vertical_offset = vertical_offset.transpose((2, 0, 1))
-
+            
         # return the requested output
-        if self.return_offset_maps:
-            if self.return_binary_segmentation:
-                return binary_segmentation, horizontal_offset, vertical_offset
-            else:
-                return segmentation, horizontal_offset, vertical_offset
+        output = []
+        if self.binarize_segmentation:
+            output.append(binary_tissue_segmentation)
+            if self.return_pen_segmentation:
+                output.append(binary_pen_segmentation)
         else:
-            if self.return_binary_segmentation:
-                return binary_segmentation
-            else:
-                return segmentation
+            output.append(tissue_segmentation)
+            if self.return_pen_segmentation:
+                output.append(pen_segmentation)
+        if self.return_offset_maps:
+            output.extend([horizontal_offset, vertical_offset])
+
+        return tuple(output)
+
 
     def _separate_cross_sections(
         self,
