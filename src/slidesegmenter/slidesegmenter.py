@@ -250,8 +250,12 @@ class SlideSegmenter:
                 output.append(pen_segmentation)
         if self.return_offset_maps:
             output.extend([horizontal_offset, vertical_offset])
-
-        return tuple(output)
+            
+        # check if one or more files are returned
+        if len(output) == 1:
+            return output[0]
+        else:
+            return tuple(output)
 
 
     def _separate_cross_sections(
