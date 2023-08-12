@@ -197,8 +197,11 @@ if __name__ == '__main__':
         # calculate average dice scores for each threshold value
         for data in results.values():
             total_results['image_name'].append('total')
-            total_results['tissue_threshold'].append(data['tissue_threshold'][0])
-            total_results['pen_threshold'].append(data['pen_threshold'][0])
+            if segmentation_thresholds is not None:
+                total_results['segmentation_threshold'].append(data['segmentation_threshold'][0])
+            else:
+                total_results['tissue_threshold'].append(data['tissue_threshold'][0])
+                total_results['pen_threshold'].append(data['pen_threshold'][0])
             # calculate mean and stdev for tissue Dice scores
             mean_tissue_dice, stdev_tissue_dice = mean_stdev(data['tissue_dice'])
             total_results['mean_tissue_dice'].append(mean_tissue_dice)
