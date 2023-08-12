@@ -99,8 +99,8 @@ configuration = {
     # specify training hyperparameters
     "training": {
         "learning_rate": 3e-4,
-        "iterations": 50000,
-        "iterations_per_decay": 10000,
+        "iterations": 100000,
+        "iterations_per_decay": 20000,
         "decay_factor": 0.5,
         "iterations_per_checkpoint": 500,
         "iterations_per_update": 5,
@@ -175,6 +175,23 @@ configuration = {
             "p": 0.2,
             "sigma_limit": (0.00001, 2),
         },
+        "Padding": [
+            {
+
+                "mode": "reflect",
+                "p": 0.8,
+            },
+            {
+                "mode": "constant",
+                "p": 0.1,
+                "value": 0,
+            }, 
+            {
+                "mode": "constant",
+                "p": 0.1,
+                "value": 255,
+            },
+        ]
     }
 }
 

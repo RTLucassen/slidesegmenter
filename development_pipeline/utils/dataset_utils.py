@@ -142,7 +142,7 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         # add padding to prevent stacked border effects
         padding, center_crop_coords = self.get_padding(image.shape)
-        image = np.pad(image, padding, mode='reflect')
+        image = np.pad(image, padding, **self.get_padding_mode())
         
         # (2) apply the shape preserving geometric augmentation transformations
         image = self.shape_preserving_transforms(image=image)['image']
@@ -165,6 +165,35 @@ class TrainingDataset(torch.utils.data.Dataset):
         image = torch.from_numpy(image).to(torch.float)
 
         return image
+
+    def get_padding_mode(self) -> dict[str, Any]:
+        """
+        Parses specified augmentation settings for padding configuration and
+        returns a padding mode based on the probabilities for selection.
+        """
+        if 'Padding' in self.augmentations:
+            config = self.augmentations['Padding']
+            # check if all probabilities add up to 1.
+            if sum([mode['p'] for mode in config]) != 1:
+                raise ValueError('The probabilities p for all padding modes '
+                                 'must add up to 1.')
+            # select a padding mode based on the probabilities for selection
+            i = random.random()
+            p = 0
+            for mode in config:
+                if i <= p+mode['p']:
+                    if mode['mode'] in ['edge', 'reflect', 'symmetric', 'wrap']:
+                        return {'mode': mode['mode']}
+                    elif mode['mode'] == 'constant':
+                        return {'mode': mode['mode'], 
+                                'constant_values': mode['value']}
+                    else:
+                        name = mode['mode']
+                        raise ValueError(f'Invalid padding mode: {name}.')
+                else:
+                    p += mode['p']
+        else:
+            return {'mode': 'reflect'} # default
 
     def get_padding(self, image_shape: tuple[int, int]) -> tuple:
         """
@@ -243,10 +272,12 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return padding, center_crop_coords
 
-    def get_aug_transforms(self) -> list:
+    def get_aug_transforms(self) -> dict[str, dict]:
         """
+        Parses specified augmentation settings and configures augmentation transforms.
+
         Returns:
-            transforms:  contains transforms
+            transforms:  transforms based on specified configuration.
         """
         transforms = {
             'geometric': {
@@ -404,8 +435,8 @@ class SupervisedTrainingDataset(TrainingDataset):
 
         # add padding to prevent stacked border effects
         padding, center_crop_coords = self.get_padding(image.shape)
-        image = np.pad(image, padding, mode='reflect')
-        annotation = np.pad(annotation, padding, mode='reflect')
+        image = np.pad(image, padding, **self.get_padding_mode())
+        annotation = np.pad(annotation, padding, **self.get_padding_mode())
 
         # (2) apply the shape preserving geometric augmentation transformations
         transformed = self.shape_preserving_transforms(image=image, mask=annotation)
