@@ -1,0 +1,8 @@
+slidesegmenter_venv
+__pycache__
+
+*.sh
+*.egg-info
+
+00_data_selection.py
+07_inference.py
