@@ -435,8 +435,12 @@ class SupervisedTrainingDataset(TrainingDataset):
 
         # add padding to prevent stacked border effects
         padding, center_crop_coords = self.get_padding(image.shape)
-        image = np.pad(image, padding, **self.get_padding_mode())
-        annotation = np.pad(annotation, padding, **self.get_padding_mode())
+        padding_mode = self.get_padding_mode()
+        image = np.pad(image, padding, **padding_mode)
+        # padding with constant values should always result in zeros in the mask
+        if 'constant_values' in padding_mode:
+            padding_mode['constant_values'] = 0
+        annotation = np.pad(annotation, padding, **padding_mode)
 
         # (2) apply the shape preserving geometric augmentation transformations
         transformed = self.shape_preserving_transforms(image=image, mask=annotation)

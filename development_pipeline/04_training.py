@@ -177,7 +177,6 @@ configuration = {
         },
         "Padding": [
             {
-
                 "mode": "reflect",
                 "p": 0.8,
             },
@@ -477,7 +476,7 @@ if __name__ == '__main__':
                 value = validation_losses[name][-1]
                 message += f'[{name}]: {value:0.3f},   '
             validation_losses['index'].append(index)
-            logger.info(message+'\n\n')
+            logger.info(message+'\n ')
 
             # save model checkpoint
             torch.save({
