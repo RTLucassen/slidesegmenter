@@ -18,6 +18,7 @@ and semantic segmentation of pen markings.
 """
 
 import json
+import os
 from math import ceil, floor
 from pathlib import Path
 from typing import Optional, Union
@@ -39,27 +40,6 @@ class SlideSegmenter:
     (3) post-processing (i.e., cropping to the original size and optionally 
         separating tissue cross-sections).
     """
-    # define names of model state dictionary and settings files
-    model_state_dict_files = [
-        'model_state_dict_pt001.pth', 
-        'model_state_dict_pt002.pth',
-        'model_state_dict_pt003.pth', 
-        'model_state_dict_pt004.pth',
-    ]
-    settings_file = 'settings.json'
-
-    # define parameter settings for segmentation and distance map correction
-    default_tissue_threshold = 0.3
-    default_pen_marking_threshold = 0.1
-    padding_mode = 'constant'
-    padding_value = 0  # in case of 'constant' padding mode
-    distance_factor = 100
-    
-    # define parameter values for separating cross sections
-    pixels_per_bin = 20
-    sigma = 4
-    filter_size = 15
-    percentile = 95
     
     def __init__(
         self, 
@@ -67,6 +47,7 @@ class SlideSegmenter:
         tissue_segmentation: bool = True,
         pen_marking_segmentation: bool = True,
         separate_cross_sections: bool = True,
+        model_folder: str = 'latest',
         device: str = 'cpu', 
     ) -> None:
         """
@@ -80,6 +61,8 @@ class SlideSegmenter:
             pen_marking_segmentation:  Indicates whether pen markings are segmented.
             separate_cross_sections:  Indicates whether the segmented tissue 
                 cross-sections are separated. 
+            model:  Name of model subfolder in model_files folder of the package
+                ('latest' selects the latest model).
             device:  Specifies whether model inference is performed on the cpu or gpu.
         """
         # create instance attributes
@@ -87,9 +70,11 @@ class SlideSegmenter:
         self.tissue_segmentation = tissue_segmentation
         self.pen_marking_segmentation = pen_marking_segmentation
         self.separate_cross_sections = separate_cross_sections
+        self.model_folder = model_folder
         self.device = device
         self.model = None
         self.divisor = None
+        self.hyperparameters = {}
 
         # check if the combination of the selected predictive tasks is valid
         if not (self.tissue_segmentation or self.pen_marking_segmentation):
@@ -124,16 +109,28 @@ class SlideSegmenter:
                                  'must also be specified.')
         else:
             model = ModifiedUNet
+            # get the latest model folder
+            directory = Path(model_files.__file__).parent
+            if self.model_folder == 'latest':
+                excluded_folders = ['__init__.py', '__pycache__']
+                self.model_folder = sorted([
+                    f for f in os.listdir(directory) if f not in excluded_folders
+                ])[-1]
             if model_paths is None:
                 model_paths = []
-                for file_name in self.model_state_dict_files:
-                    model_paths.append(Path(model_files.__file__).parent / file_name)
+                for path in (directory / self.model_folder).iterdir():
+                    if path.suffix == '.pth':
+                        model_paths.append(path)
             if settings_path is None:
-                settings_path = Path(model_files.__file__).parent / self.settings_file
+                settings_path = directory / self.model_folder / 'settings.json'
 
         # load model settings
         with open(settings_path, 'r') as f:
             settings = json.load(f)
+
+        # store hyperparameters
+        if 'hyperparameters' in settings:
+            self.hyperparameters = settings['hyperparameters']
 
         # if a single path was provided, add to a list
         if isinstance(model_paths, (str, Path)):
@@ -256,8 +253,8 @@ class SlideSegmenter:
         image = np.pad(
             array=image,
             pad_width=padding, 
-            mode=self.padding_mode, 
-            constant_values=self.padding_value,
+            mode=self.hyperparameters['padding_mode'], 
+            constant_values=self.hyperparameters['padding_value'],
         )
         # convert the image to a torch Tensor
         image = torch.from_numpy(image).float()
@@ -291,13 +288,13 @@ class SlideSegmenter:
    
         # binarize the segmentations based on the threshold value
         if tissue_threshold == 'default':
-            tissue_threshold = self.default_tissue_threshold 
+            tissue_threshold = self.hyperparameters['tissue_threshold']
         if self.tissue_segmentation and tissue_threshold is not None: 
             tissue_segmentation = np.where(
                 tissue_segmentation >= tissue_threshold, 1, 0)
 
         if pen_marking_threshold == 'default':
-            pen_marking_threshold = self.default_pen_marking_threshold
+            pen_marking_threshold = self.hyperparameters['pen_marking_threshold']
         if self.pen_marking_segmentation and pen_marking_threshold is not None:
             pen_marking_segmentation = np.where(
                 pen_marking_segmentation >= pen_marking_threshold, 1, 0)
@@ -353,6 +350,7 @@ class SlideSegmenter:
                 with respect to centroid as (height, width).
             vertical_distance:  Image with predicted vertical distance [float32]
                 with respect to centroid as (height, width).
+        
         Returns:
             nearest_centroid_map:  Segmentation for whole slide image [uint8] 
                 (at 1.25x) as (height, width, channel).
@@ -371,15 +369,22 @@ class SlideSegmenter:
             indexing="ij",
         )
         # create the centroid maps
-        x_centroid_map = (horizontal_map - (horizontal_distance*self.distance_factor))
-        y_centroid_map = (vertical_map - (vertical_distance*self.distance_factor))
+        distance_factor = self.hyperparameters['distance_factor']
+        x_centroid_map = (horizontal_map - (horizontal_distance*distance_factor))
+        y_centroid_map = (vertical_map - (vertical_distance*distance_factor))
 
         # flatten the centroid map and select only the tissue regions
         x_centroid_flat = x_centroid_map.reshape((-1,))[mask]
         y_centroid_flat = y_centroid_map.reshape((-1,))[mask]
 
+        # get hyperparameter values from dictionary
+        sigma = self.hyperparameters['sigma']
+        percentile = self.hyperparameters['percentile']
+        filter_size = self.hyperparameters['filter_size']
+        pixels_per_bin = self.hyperparameters['pixels_per_bin']
+
         # determine the number of bins for the histogram
-        bins = [image_shape[0]//self.pixels_per_bin, image_shape[1]//self.pixels_per_bin]
+        bins = [image_shape[0]//pixels_per_bin, image_shape[1]//pixels_per_bin]
         # add the top left and bottom right point of the histogram
         # this prevents the histogram from removing empty rows and columns,
         # which would not change the output but can prevent confusion when
@@ -395,10 +400,10 @@ class SlideSegmenter:
             bins=bins,
         )
         # apply Gaussian filtering to decrease local peaks
-        if self.sigma is not None:
-            histogram = gaussian_filter(histogram, sigma=self.sigma)
-        histogram_mask = np.where(histogram > np.percentile(histogram, self.percentile), 1, 0)
-        max_filtered_histogram = maximum_filter(histogram, self.filter_size)
+        if sigma is not None:
+            histogram = gaussian_filter(histogram, sigma=sigma)
+        histogram_mask = np.where(histogram > np.percentile(histogram, percentile), 1, 0)
+        max_filtered_histogram = maximum_filter(histogram, filter_size)
         maxima = np.where(histogram == max_filtered_histogram, 1, 0)*histogram_mask
 
         # convert the edges from ranges to the center value
@@ -441,8 +446,10 @@ class SlideSegmenter:
         nearest_centroid_map[vertical_flat, horizontal_flat] = nearest_centroid_flat
 
         # assign each cross-section to a separate channel
-        index_map = np.tile(np.arange(1, len(centroid_coords)+1)[None, None, ...], 
-                            (*image_shape, 1))
+        index_map = np.tile(
+            np.arange(1, len(centroid_coords)+1)[None, None, ...], 
+            (*image_shape, 1),
+        )
         nearest_centroid_map = np.where(nearest_centroid_map[..., None] == index_map, 1, 0)
 
         return nearest_centroid_map, centroid_coords

@@ -90,7 +90,6 @@ if __name__ == '__main__':
         num_workers=1,
         pin_memory=True,
     )
-
     # configure model
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
@@ -130,11 +129,15 @@ if __name__ == '__main__':
                     results[index] = {key: [] for key in keys}
 
                 # assign hyperparameter values 
-                segmenter.pixels_per_bin = hyperparameters[0]
-                segmenter.sigma = hyperparameters[1]
-                segmenter.filter_size = hyperparameters[2]
-                segmenter.percentile = hyperparameters[3]
-                
+                segmenter.hyperparameters = {
+                    'pixels_per_bin': hyperparameters[0],
+                    'sigma': hyperparameters[1],
+                    'filter_size': hyperparameters[2],
+                    'percentile': hyperparameters[3],
+                    "padding_mode": "constant",
+                    "padding_value": 0,
+                    "distance_factor": 100,
+                }                
                 # separate cross-sections
                 separated_cross_sections, centroids = segmenter._separate_cross_sections(
                     segmentation=tissue_segmentation, 
