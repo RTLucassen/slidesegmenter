@@ -34,9 +34,9 @@ class Index:
         Initialize index tracker class.
 
         Args:
-            initial: initial index
-            minimum: minimum index
-            maximum: maximum index
+            initial:  Initial index.
+            minimum:  Minimum index.
+            maximum:  Maximum index.
         """
         self.__idx = initial
         self.__minimum = minimum
@@ -46,17 +46,22 @@ class Index:
         if self.__idx < self.__minimum or self.__idx > self.__maximum:
             raise ValueError('Initialized index outside of specified range.')
     
+
     def current(self) -> int:
         return self.__idx
     
+
     def minimum(self) -> int:
         return self.__minimum
+
 
     def maximum(self) -> int:
         return self.__maximum
     
+
     def add(self, step: int = 1) -> None:
         self.__idx = min(self.__idx+step, self.__maximum)
+
 
     def subtract(self, step: int = 1) -> None:
         self.__idx = max(self.__idx-step, self.__minimum)
@@ -82,10 +87,10 @@ class BasicEventTracker:
         Initialize BasicEventTracker instance.
 
         Args:
-            ax: matplotlib.pyplot figure axis.
-            image_tensor: batch of images with the shape: 
-                          (instance, channel, height, width).
-            idx: slice that is displayed first when the figure is created.
+            ax:  Matplotlib.pyplot figure axis.
+            image_tensor:  Batch of images with the shape: (instance, channel, 
+                height, width).
+            idx:  Slice that is displayed first when the figure is created.
         """
         # check and define instance attribute for image tensor
         if isinstance(image_tensor, np.ndarray):
@@ -106,12 +111,12 @@ class BasicEventTracker:
         # set the first image
         self.__update()
 
+
     def onscroll(self, event: matplotlib.backend_bases.MouseEvent) -> None:
         """ 
-        Add or subtract 'self.__speed' from the instance index 
-        when scrolling up or down respectively.
-        Update the image frame afterwards. Do not update the index when 
-        scolling up for the last or down for the first image.
+        Add or subtract 'self.__speed' from the instance index when scrolling 
+        up or down respectively. Update the image frame afterwards. Do not update 
+        the index when scolling up for the last or down for the first image.
         """
         if event.button == 'up':
             # update the index after scolling
@@ -123,6 +128,7 @@ class BasicEventTracker:
             self.__idx.subtract(self.__speed)
             self.__update()
 
+
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Increase the scrolling speed while 'SHIFT' is pressed.
@@ -133,6 +139,7 @@ class BasicEventTracker:
             if key == 'shift' and self.__speed == 1:
                 self.__speed = self.__scroll_speed
 
+
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Reset the scrolling speed when 'SHIFT' is released.
@@ -142,6 +149,7 @@ class BasicEventTracker:
             # decreases scrolling speed
             if key == 'shift' and self.__speed == self.__scroll_speed:
                 self.__speed = 1
+
 
     def __update(self) -> None:
         """ 
@@ -182,14 +190,14 @@ class EventTracker:
         Initialize EventTracker instance.
 
         Args:
-            ax: matplotlib.pyplot figure axis.
-            image_tensor: batch of images with the shape: 
-                          (instance, channel, height, width).
-            idx: slice that is displayed first when the figure is created.
-            class_idx: index for corresponding channel to show.
-            cmap: colormap recognized by matplotlib.pyplot module.
-            vmin: image intensity used as minimum for the colormap.
-            vmax: image intensity used as maximum for the colormap.
+            ax:  Matplotlib.pyplot figure axis.
+            image_tensor:  Batch of images with the shape: (instance, channel, 
+                height, width).
+            idx:  Slice that is displayed first when the figure is created.
+            class_idx:  Index for corresponding channel to show.
+            cmap:  Colormap recognized by matplotlib.pyplot module.
+            vmin:  Image intensity used as minimum for the colormap.
+            vmax:  Image intensity used as maximum for the colormap.
         """
         # check and define instance attribute for image tensor
         if isinstance(image_tensor, np.ndarray):
@@ -216,12 +224,13 @@ class EventTracker:
         # set the first image
         self.__update()
 
+
     def onscroll(self, event: matplotlib.backend_bases.MouseEvent) -> None:
         """ 
-        Add or subtract 'self.__speed' from the selected index 
-        (either instance or class) when scrolling up or down respectively.
-        Update the image frame afterwards. Do not update the index when 
-        scolling up for the last or down for the first image.
+        Add or subtract 'self.__speed' from the selected index (either instance 
+        or class) when scrolling up or down respectively. Update the image 
+        frame afterwards. Do not update the index when scolling up for the 
+        last or down for the first image.
         """
         if event.button == 'up':
             # update the index after scolling
@@ -232,6 +241,7 @@ class EventTracker:
             # update the index after scolling
             self.__selected_idx.subtract(self.__speed)
             self.__update()
+
 
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
@@ -246,6 +256,7 @@ class EventTracker:
             if key == 'control' and self.__selected_idx == self.__idx:
                 self.__selected_idx = self.__class_idx
 
+
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Reset the scrolling speed when 'SHIFT' is released.
@@ -258,6 +269,7 @@ class EventTracker:
             # scrolling now influences instance index
             if key == 'control' and self.__selected_idx == self.__class_idx:
                 self.__selected_idx = self.__idx
+
 
     def __update(self) -> None:
         """ 
@@ -283,8 +295,8 @@ def rgb_image_viewer(
     Tool to view a set of RGB images by scrolling through the slices.
 
     Args:
-        tensor: batch of images with the shape: (instance, channel, height, width).
-        idx: slice that is displayed first when the figure is created.
+        tensor:  Batch of images with the shape: (instance, channel, height, width).
+        idx:  Slice that is displayed first when the figure is created.
     """
     # create a figure and axis
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
@@ -311,12 +323,12 @@ def image_viewer(
     Tool to view a set of images by scrolling through the slices or channels.
 
     Args:
-        tensor: batch of images with the shape: (instance, channel, height, width).
-        idx: slice that is displayed first when the figure is created.
-        class_idx: index for corresponding channel to show.
-        cmap: colormap recognized by matplotlib.pyplot module.
-        vmin: image intensity used as minimum for the colormap.
-        vmax: image intensity used as maximum for the colormap.
+        tensor:  Batch of images with the shape: (instance, channel, height, width).
+        idx:  Slice that is displayed first when the figure is created.
+        class_idx:  Index for corresponding channel to show.
+        cmap:  Colormap recognized by matplotlib.pyplot module.
+        vmin:  Image intensity used as minimum for the colormap.
+        vmax:  Image intensity used as maximum for the colormap.
     """
     # create a figure and axis
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))

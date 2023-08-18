@@ -523,4 +523,4 @@ if __name__ == '__main__':
     ax.set_ylim(bottom=0)
     plt.xlim([-25, update_losses['index'][-1]+25])
     plt.legend()
-    plt.savefig(os.path.join(output_folder, 'loss.png'))
+    plt.savefig(os.path.join(output_folder, 'loss.png'), dpi=300)

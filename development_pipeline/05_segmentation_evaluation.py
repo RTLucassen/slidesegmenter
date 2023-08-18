@@ -90,7 +90,7 @@ if __name__ == '__main__':
     # configure model
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
-    segmenter = SlideSegmenter(channels_last=False, binarize_segmentation=False)
+    segmenter = SlideSegmenter(channels_last=False, separate_cross_sections=False)
     segmenter._load_model(ModifiedUNet, checkpoint_path, settings_path)
 
     # initalize dictionary to store results
@@ -110,7 +110,8 @@ if __name__ == '__main__':
             pen_annotation = annotations[:, 1:2, ...].numpy()
 
             # get the model predictions
-            predictions = segmenter.segment(image[0, ...], separate_cross_sections=False)
+            predictions = segmenter.segment(image[0, ...], tissue_threshold=None, 
+                                            pen_marking_threshold=None)
             tissue_prediction, pen_prediction = predictions
 
             # loop over all combinations of hyperparameter values in the grid search

@@ -32,10 +32,10 @@ from . import model_files
 
 class SlideSegmenter:
     """
-    Class for segmenting tissue and pen markings on low resolution (1.25x)
+    Class for segmenting tissue and pen markings in low resolution (1.25x)
     whole slide images. The class is responsible for:
-    (1) preprocessing (i.e., padded to a valid size) 
-    (2) running model inference to get the segmentations
+    (1) preprocessing (i.e., padded to a valid size).
+    (2) running model inference to get the segmentations.
     (3) post-processing (i.e., cropping to the original size and optionally 
         separating tissue cross-sections).
     """
@@ -53,7 +53,7 @@ class SlideSegmenter:
     default_pen_marking_threshold = 0.1
     padding_mode = 'constant'
     padding_value = 0  # in case of 'constant' padding mode
-    offset_factor = 100
+    distance_factor = 100
     
     # define parameter values for separating cross sections
     pixels_per_bin = 20
@@ -64,36 +64,40 @@ class SlideSegmenter:
     def __init__(
         self, 
         channels_last: bool = True,
-        binarize_segmentation: bool = True,
-        return_pen_segmentation: bool = True,
-        return_offset_maps: bool = False,
+        tissue_segmentation: bool = True,
+        pen_marking_segmentation: bool = True,
+        separate_cross_sections: bool = True,
         device: str = 'cpu', 
     ) -> None:
         """
         Initialize SlideSegmenter instance.
 
         Args:
-            channels_last: indicates whether the input is expected to have 
-                           the channels dimension after the spatial dimension.
-                           If False, channels first is assumed.
-            binarize_segmentation: indicates whether the predicted segmentation 
-                                   is binarized based on the threshold value.
-            return_pen_segmentation: indicates whether the predicted pen segmentation
-                                     is returned.
-            return_offset_maps: indicates whether predicted horizontal and vertical 
-                                offset maps are returned.
-            device: specifies whether the pytorch model inference is performed 
-                    on the cpu or gpu.
+            channels_last:  Indicates whether the input is expected to have 
+                the channels dimension after the spatial dimension. If False, 
+                channels first is assumed.
+            tissue_segmentation:  Indicates whether tissue is segmented.
+            pen_marking_segmentation:  Indicates whether pen markings are segmented.
+            separate_cross_sections:  Indicates whether the segmented tissue 
+                cross-sections are separated. 
+            device:  Specifies whether model inference is performed on the cpu or gpu.
         """
         # create instance attributes
         self.channels_last = channels_last
-        self.binarize_segmentation = binarize_segmentation
-        self.return_pen_segmentation = return_pen_segmentation
-        self.return_offset_maps = return_offset_maps
+        self.tissue_segmentation = tissue_segmentation
+        self.pen_marking_segmentation = pen_marking_segmentation
+        self.separate_cross_sections = separate_cross_sections
         self.device = device
         self.model = None
         self.divisor = None
 
+        # check if the combination of the selected predictive tasks is valid
+        if not (self.tissue_segmentation or self.pen_marking_segmentation):
+            raise ValueError('Atleast one of the segmentation tasks must be selected.')
+        if self.separate_cross_sections and not self.tissue_segmentation:
+            raise ValueError('The separation of cross-sections can only be '
+                             'performed if the tissue is segmented.')
+        
         # load and configure model
         self._load_model()
 
@@ -108,9 +112,9 @@ class SlideSegmenter:
         Loads and configures model.
         
         Args:
-            model: model class.
-            model_paths: path(s) to (model) state dictionary.
-            settings_path: path to model settings JSON.
+            model:  Model class.
+            model_paths:  Path(s) to (model) state dictionary.
+            settings_path:  Path to model settings JSON.
         """
         # check whether the combination of input arguments is valid
         if model is not None:
@@ -148,7 +152,17 @@ class SlideSegmenter:
             model_state_dict = {**model_state_dict, **dictionary}
 
         # configure model
-        self.model = model(**settings['model'])
+        self.model = model(
+            **settings['model'], 
+            attach_tissue_decoder=self.tissue_segmentation,
+            attach_pen_decoder=self.pen_marking_segmentation, 
+            attach_distance_decoder=self.separate_cross_sections,
+        )
+        # remove excess layers from the model state dictionary (in case the pen 
+        # or distance decoder are not used) and load it
+        model_state_dict = {
+            name: model_state_dict[name] for name, _ in self.model.named_parameters()
+        }
         self.model.load_state_dict(model_state_dict)
         self.model.eval()
 
@@ -159,9 +173,9 @@ class SlideSegmenter:
     def segment(
         self, 
         image: Union[np.ndarray, torch.Tensor],
-        tissue_threshold: Optional[float] = None,
-        pen_marking_threshold: Optional[float] = None,
-        separate_cross_sections: bool = True,
+        tissue_threshold: Optional[Union[float, str]] = 'default',
+        pen_marking_threshold: Optional[Union[float, str]] = 'default',
+        return_distance_maps: bool = False,
     ) -> Union[np.ndarray, tuple]:
         """
         Steps in segmentation pipeline:
@@ -172,26 +186,26 @@ class SlideSegmenter:
         (4) Optionally divide the tissue segmentations into separate cross-sections.
 
         Args:
-            image: whole slide image (at 1.25x) [uint8] as (height, width, channel)
-                   for channels last or (channel, height, width) for channels first.
-            tissue_threshold: threshold value for binarizing the predicted 
-                              tissue segmentation.
-            pen_marking_threshold: threshold value for binarizing the predicted 
-                                   pen marking segmentation.
-            separate_cross_sections: indicates whether the tissue segmentation
-                                     should be returned as separate cross-sections.
+            image:  Whole slide image (at 1.25x) [uint8] as (height, width, channel)
+                for channels last or (channel, height, width) for channels first.
+            tissue_threshold:  Threshold value for binarizing the predicted 
+                tissue segmentation ('default': the threshold value based on the 
+                validation set is used, None: the segmentation is not thresholded).
+            pen_marking_threshold:  Threshold value for binarizing the predicted 
+                pen marking segmentation ('default': the threshold value based on the 
+                validation set is used, None: the segmentation is not thresholded).
+            return_distance_maps:  Indicates whether the distance maps are returned.
+        
         Returns:
-            segmentation: segmentation for whole slide image [float32] (at 1.25x) 
-                          as (height, width, channel) for channels last or 
-                          (channel, height, width) for channels first.
-            horizontal_offset: image with predicted horizontal offset [float32]
-                               with respect to centroid as (height, width, channel) 
-                               for channels last or (channel, height, width) 
-                               for channels first.
-            vertical_offset: image with predicted vertical offset [float32]
-                             with respect to centroid as (height, width, channel) 
-                             for channels last or (channel, height, width) 
-                             for channels first.
+            tissue_segmentation:  Segmentation for whole slide image [float32] 
+                (at 1.25x) as (height, width, channel) for channels last or 
+                (channel, height, width) for channels first.
+            pen_marking_segmentation:  Segmentation for whole slide image [float32] 
+                (at 1.25x) as (height, width, channel) for channels last or 
+                (channel, height, width) for channels first.
+            distance_maps:  Image with predicted horizontal and vertical distance 
+                [float32] with respect to centroid as (height, width, channel) 
+                for channels last or (channel, height, width) for channels first.
         """
         # check image object type, convert to numpy array if necessary
         if isinstance(image, torch.Tensor):
@@ -206,6 +220,16 @@ class SlideSegmenter:
         # check if the image input argument is valid
         if len(image.shape) != 3:
             raise ValueError('Invalid number of dimensions for input argument.')
+        
+        # check if the tissue threshold for binarization is specified in case
+        # the cross-sections should be separated.
+        if self.separate_cross_sections and tissue_threshold is None:
+            raise ValueError('The tissue threshold must be specified if the '
+                             'cross-sections should be separated.')
+        # check if distance maps can be returned
+        if return_distance_maps and not self.separate_cross_sections:
+            raise ValueError('Distance maps can only be returned when '
+                             'cross-sections should be separated.')
 
         # change the channels dimension to be the first dimension if necessary
         if self.channels_last:
@@ -251,64 +275,60 @@ class SlideSegmenter:
         prediction = prediction[:, top:top+height, left:left+width]
         
         # separate the channels and apply the final activation functions
-        tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
-        pen_segmentation = torch.sigmoid(prediction[1, ...]).numpy()
-        horizontal_offset = prediction[2, ...].numpy()
-        vertical_offset = prediction[3, ...].numpy()
-        
+        # depending on the select tasks
+        if self.tissue_segmentation:
+            tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+            if self.pen_marking_segmentation:
+                pen_marking_segmentation = torch.sigmoid(prediction[1, ...]).numpy()
+                if self.separate_cross_sections:
+                    horizontal_distance = prediction[2, ...].numpy()
+                    vertical_distance = prediction[3, ...].numpy()
+            elif self.separate_cross_sections:
+                horizontal_distance = prediction[1, ...].numpy()
+                vertical_distance = prediction[2, ...].numpy()
+        elif self.pen_marking_segmentation:
+            pen_marking_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+   
         # binarize the segmentations based on the threshold value
-        if tissue_threshold is None:
-            tissue_threshold = self.default_tissue_threshold  
-        binary_tissue_segmentation = np.where(tissue_segmentation >= tissue_threshold, 1, 0)
-        binary_tissue_segmentation = binary_tissue_segmentation.astype(np.uint8)
-        if pen_marking_threshold is None:
+        if tissue_threshold == 'default':
+            tissue_threshold = self.default_tissue_threshold 
+        if self.tissue_segmentation and tissue_threshold is not None: 
+            tissue_segmentation = np.where(
+                tissue_segmentation >= tissue_threshold, 1, 0)
+
+        if pen_marking_threshold == 'default':
             pen_marking_threshold = self.default_pen_marking_threshold
-        binary_pen_segmentation = np.where(tissue_segmentation >= pen_marking_threshold, 1, 0)
-        binary_pen_segmentation = binary_pen_segmentation.astype(np.uint8)
+        if self.pen_marking_segmentation and pen_marking_threshold is not None:
+            pen_marking_segmentation = np.where(
+                pen_marking_segmentation >= pen_marking_threshold, 1, 0)
 
-        # separate the cross-sections based on the predicted offset maps
-        if separate_cross_sections:
+        # separate the cross-sections based on the predicted distance maps
+        if self.separate_cross_sections:
             separated_cross_sections, _ = self._separate_cross_sections(
-                binary_tissue_segmentation, 
-                horizontal_offset, 
-                vertical_offset,
+                tissue_segmentation, 
+                horizontal_distance, 
+                vertical_distance,
             )
-            # separate cross-sections as separate channels
-            tissue_segmentation = tissue_segmentation[..., None]*separated_cross_sections
-            binary_tissue_segmentation = separated_cross_sections
-        else:
-            # add extra channel
+            tissue_segmentation = separated_cross_sections
+        elif self.tissue_segmentation:
             tissue_segmentation = tissue_segmentation[..., None]
-            binary_tissue_segmentation = binary_tissue_segmentation[..., None]
         
-        # add extra channel
-        pen_segmentation = pen_segmentation[..., None]
-        binary_pen_segmentation = binary_pen_segmentation[..., None]
-        horizontal_offset = horizontal_offset[..., None]
-        vertical_offset = vertical_offset[..., None]
-
-        # change last channel to first channel
-        if not self.channels_last:
-            tissue_segmentation = tissue_segmentation.transpose((2, 0, 1))
-            binary_tissue_segmentation = binary_tissue_segmentation.transpose((2, 0, 1))
-            pen_segmentation = pen_segmentation.transpose((2, 0, 1))
-            binary_pen_segmentation = binary_pen_segmentation.transpose((2, 0, 1))
-            horizontal_offset = horizontal_offset.transpose((2, 0, 1))
-            vertical_offset = vertical_offset.transpose((2, 0, 1))
-            
         # return the requested output
         output = []
-        if self.binarize_segmentation:
-            output.append(binary_tissue_segmentation)
-            if self.return_pen_segmentation:
-                output.append(binary_pen_segmentation)
-        else:
+        if self.tissue_segmentation:
             output.append(tissue_segmentation)
-            if self.return_pen_segmentation:
-                output.append(pen_segmentation)
-        if self.return_offset_maps:
-            output.extend([horizontal_offset, vertical_offset])
-            
+        if self.pen_marking_segmentation:
+            output.append(pen_marking_segmentation[..., None])
+        if return_distance_maps:
+            distance_maps = np.concatenate([horizontal_distance[..., None], 
+                                            vertical_distance[..., None]], 
+                                            axis=-1)
+            output.append(distance_maps)
+
+        # change the last channel to the first channel
+        if not self.channels_last:
+            output = [img.transpose((2, 0, 1)) for img in output]
+
         # check if one or more files are returned
         if len(output) == 1:
             return output[0]
@@ -319,24 +339,24 @@ class SlideSegmenter:
     def _separate_cross_sections(
         self,
         segmentation: np.ndarray, 
-        horizontal_offset: np.ndarray,
-        vertical_offset: np.ndarray, 
+        horizontal_distance: np.ndarray,
+        vertical_distance: np.ndarray, 
     ) -> tuple[np.ndarray, list[tuple[float, float]]]:
         """
         Separate cross-sections in the predicted segmentation map,
         based on the predicted horizontal and vertical distance maps.
 
         Args:
-            segmentation: segmentation for whole slide image [uint8] (at 1.25x) 
-                          as (height, width).
-            horizontal_offset: image with predicted horizontal offset [float32]
-                               with respect to centroid as (height, width).
-            vertical_offset: image with predicted vertical offset [float32]
-                             with respect to centroid as (height, width).
+            segmentation:  Segmentation for whole slide image [uint8] (at 1.25x) 
+                as (height, width).
+            horizontal_distance:  Image with predicted horizontal distance [float32]
+                with respect to centroid as (height, width).
+            vertical_distance:  Image with predicted vertical distance [float32]
+                with respect to centroid as (height, width).
         Returns:
-            nearest_centroid_map: segmentation for whole slide image [uint8] 
-                                  (at 1.25x) as (height, width, channel).
-            centroid_coords: coordinates of extracted centroids.
+            nearest_centroid_map:  Segmentation for whole slide image [uint8] 
+                (at 1.25x) as (height, width, channel).
+            centroid_coords:  Coordinates of extracted centroids.
         """
         # initialize a variable with the image shape
         image_shape = segmentation.shape
@@ -351,8 +371,8 @@ class SlideSegmenter:
             indexing="ij",
         )
         # create the centroid maps
-        x_centroid_map = (horizontal_map - (horizontal_offset*self.offset_factor))
-        y_centroid_map = (vertical_map - (vertical_offset*self.offset_factor))
+        x_centroid_map = (horizontal_map - (horizontal_distance*self.distance_factor))
+        y_centroid_map = (vertical_map - (vertical_distance*self.distance_factor))
 
         # flatten the centroid map and select only the tissue regions
         x_centroid_flat = x_centroid_map.reshape((-1,))[mask]

@@ -23,6 +23,16 @@ import torch
 
 
 def mean_stdev(values: Sequence) -> float:
+    """
+    Calculate the mean and standard deviation of the values.
+
+    Args:
+        values:  Values to calculate the mean and standard deviation for.
+
+    Returns:
+        mean:  Mean of values (None if it cannot be calculated).
+        stdev:  Standard deviation of values (None if it cannot be calculated).
+    """
     # remove None, np.nan, and torch.nan cases
     numeric_values = []
     for value in values:
@@ -47,6 +57,7 @@ def mean_stdev(values: Sequence) -> float:
     else:
         return None, None
 
+
 def dice_score(
     y_hat: Union[torch.Tensor, np.ndarray], 
     y_true: Union[torch.Tensor, np.ndarray], 
@@ -58,13 +69,14 @@ def dice_score(
     Calculates the Dice score.
 
     Args:
-        y_hat: predicted probabilities of shape: (batch, class, X, Y, ...).
-        y_true: true label of shape: (batch, class, X, Y, ...).
-        class_weights: if not None, compute a weighted average score for the classes. 
-        smooth_denom: small value added to the denominator to prevent division 
-                      by zero errors and to better handle negative cases.
+        y_hat:  Predicted probabilities of shape: (batch, class, X, Y, ...).
+        y_true:  True label of shape: (batch, class, X, Y, ...).
+        class_weights:  If not None, compute a weighted average score for the classes. 
+        smooth_denom:  Small value added to the denominator to prevent division 
+            by zero errors and to better handle negative cases.
+    
     Returns:
-        score: Dice score for all items in the batch.
+        score:  Dice score for all items in the batch.
     """
     # convert to numpy arrays if necessary
     if isinstance(y_hat, np.ndarray):

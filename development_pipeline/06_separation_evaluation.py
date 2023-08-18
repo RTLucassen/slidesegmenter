@@ -94,8 +94,7 @@ if __name__ == '__main__':
     # configure model
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
-    segmenter = SlideSegmenter(channels_last=False, return_pen_segmentation=False, 
-                               return_offset_maps=True)
+    segmenter = SlideSegmenter(channels_last=False, pen_marking_segmentation=False)
     segmenter._load_model(ModifiedUNet, checkpoint_path, settings_path)
 
     # initalize dictionary to store results
@@ -112,13 +111,14 @@ if __name__ == '__main__':
             annotated_cross_sections = int(cross_sections)
 
             # get the model predictions
-            predictions = segmenter.segment(
+            tissue_segmentation, distance_maps = segmenter.segment(
                 image=image[0, ...], 
                 tissue_threshold=tissue_threshold,
                 pen_marking_threshold=pen_threshold,
-                separate_cross_sections=False,
+                return_distance_maps=True,
             )
-            tissue_segmentation, horizontal_offset, vertical_offset = predictions
+            # combine the already separated cross-sections again for the grid search
+            tissue_segmentation = np.sum(tissue_segmentation, axis=0)
 
             # loop over all combinations of hyperparameter values in the grid search
             hyperparameters_ranges = [pixels_per_bin_values, sigmas, filter_sizes, percentiles]
@@ -137,9 +137,9 @@ if __name__ == '__main__':
                 
                 # separate cross-sections
                 separated_cross_sections, centroids = segmenter._separate_cross_sections(
-                    segmentation=tissue_segmentation[0, ...], 
-                    horizontal_offset=horizontal_offset[0, ...], 
-                    vertical_offset=vertical_offset[0, ...],
+                    segmentation=tissue_segmentation, 
+                    horizontal_distance=distance_maps[0, ...], 
+                    vertical_distance=distance_maps[1, ...],
                 )
                 # determine the number of predicted cross-sections
                 predicted_cross_sections = separated_cross_sections.shape[-1]
@@ -175,7 +175,7 @@ if __name__ == '__main__':
                     combined = combined.astype(np.uint8).transpose((2,0,1))[None, ...]
 
                     if True:
-                        s = 5
+                        s = 9
                         for x, y in centroids:
                             combined[:, :, int(y)-s:int(y)+s+1, int(x)-s:int(x)+s+1] = 255
 

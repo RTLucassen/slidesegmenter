@@ -50,16 +50,16 @@ class TrainingDataset(torch.utils.data.Dataset):
         Initialize dataset instance.
 
         Args:
-            df: dataframe with dataset info.
-            length: number of items in the dataset (can be set arbitrarily for
-                    training without specifying epochs).
-            shape: shape of random crops from the images as (height, width).
-            max_shape: maximum shape of the images as (height, width).
-            divisor: input images are padded to be divisible by this number.
-            augmentations: settings for on-the-fly data augmentation.
-            return_image_name: indicates whether the image names are returned.
-            return_N_cross_sections: indicates whether the number of cross-sections
-                                     are returned.
+            df:  Dataframe with dataset info.
+            length:  Number of items in the dataset (can be set arbitrarily for
+                training without specifying epochs).
+            shape:  Shape of random crops from the images as (height, width).
+            max_shape:  Maximum shape of the images as (height, width).
+            divisor:  Input images are padded to be divisible by this number.
+            augmentations:  Settings for on-the-fly data augmentation.
+            return_image_name:  Indicates whether the image names are returned.
+            return_N_cross_sections:  Indicates whether the number of 
+                cross-sections are returned.
         """
         # initialize instance attributes
         self.length = length
@@ -113,22 +113,24 @@ class TrainingDataset(torch.utils.data.Dataset):
             self.transforms['color']['all'],
         )
 
+
     def __len__(self) -> int:
         if self.length is None:
             return len(self.image_paths)
         else:
             return self.length
 
+
     def __getitem__(self, index: int) -> tuple[torch.Tensor]:
         """ 
         Returns indexed image-label pair from dataset.
 
         Args:
-            index: index for selecting image-annotation pair.
+            index:  Index for selecting image-annotation pair.
 
         Returns:
-            image: image tensor with shape (channels=3, height, width), 
-                   rescaled in the 0.0-1.0 range and optionally augmented.
+            image:  Image tensor with shape (channels=3, height, width), 
+                rescaled in the 0.0-1.0 range and optionally augmented.
         """
         # correct index
         index = index % len(self.image_paths)
@@ -166,6 +168,7 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return image
 
+
     def get_padding_mode(self) -> dict[str, Any]:
         """
         Parses specified augmentation settings for padding configuration and
@@ -195,11 +198,16 @@ class TrainingDataset(torch.utils.data.Dataset):
         else:
             return {'mode': 'reflect'} # default
 
+
     def get_padding(self, image_shape: tuple[int, int]) -> tuple:
         """
+        Args:
+            image_shape:  Shape of the image as (height, width).
+
         Returns:
-            padding: tuple with amount of padding to add to each image dimension.
-            center_crop: top left and bottom right coordinate for center cropping.
+            padding:  Tuple with amount of padding to add to each image dimension.
+            center_crop_coords:  Top left and bottom right coordinate for 
+                center cropping.
         """
         # determine the image shape for calculating the padding
         if self.shape is not None:
@@ -272,12 +280,13 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return padding, center_crop_coords
 
+
     def get_aug_transforms(self) -> dict[str, dict]:
         """
         Parses specified augmentation settings and configures augmentation transforms.
 
         Returns:
-            transforms:  transforms based on specified configuration.
+            transforms:  Transform functions based on specified configuration.
         """
         transforms = {
             'geometric': {
@@ -370,16 +379,16 @@ class SupervisedTrainingDataset(TrainingDataset):
         Initialize dataset instance.
 
         Args:
-            df: dataframe with dataset info.
-            length: number of items in the dataset (can be set arbitrarily for
-                    training without specifying epochs).
-            shape: shape of random crops from images as (width, height).
-            max_shape: maximum shape of the images as (height, width).
-            divisor: input images are padded to be divisible by this number.
-            augmentations: settings for on-the-fly data augmentation.
-            return_image_name: indicates whether the image names are returned.
-            return_N_cross_sections: indicates whether the number of cross-sections
-                                     are returned.
+            df:  Dataframe with dataset info.
+            length:  Number of items in the dataset (can be set arbitrarily for
+                training without specifying epochs).
+            shape:  Shape of random crops from images as (width, height).
+            max_shape:  Maximum shape of the images as (height, width).
+            divisor:  Input images are padded to be divisible by this number.
+            augmentations:  Settings for on-the-fly data augmentation.
+            return_image_name:  Indicates whether the image names are returned.
+            return_N_cross_sections:  Indicates whether the number of 
+                cross-sections are returned.
         """
         super().__init__(df, length, shape, max_shape, divisor, augmentations, 
                          return_image_name, return_N_cross_sections)
@@ -401,18 +410,19 @@ class SupervisedTrainingDataset(TrainingDataset):
             self.transforms['color']['background'],
         )
 
+
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         """ 
         Returns indexed image-label pair from dataset.
 
         Args:
-            index: index for selecting image-annotation pair.
+            index:  Index for selecting image-annotation pair.
 
         Returns:
-            image: image tensor with shape (channels=3, rows, columns), 
-                   rescaled in the 0.0-1.0 range and optionally augmented.
-            label: label tensor with shape (channels, rows, columns),
-                   rescaled in the 0.0-1.0 range and optionally augmented.
+            image:  Image tensor with shape (channels=3, rows, columns), 
+                rescaled in the 0.0-1.0 range and optionally augmented.
+            label:  Label tensor with shape (channels, rows, columns),
+                rescaled in the 0.0-1.0 range and optionally augmented.
         """
         # correct index
         index = index % len(self.image_paths)
@@ -502,10 +512,13 @@ class SupervisedTrainingDataset(TrainingDataset):
         
         return tuple(output)
 
+
     def get_aug_transforms(self) -> list:
         """
+        Parses specified augmentation settings and configures augmentation transforms.
+
         Returns:
-            transforms:  contains transforms
+            transforms:  Transform functions based on specified configuration.
         """
         transforms = super().get_aug_transforms()
         
@@ -524,6 +537,7 @@ class SupervisedTrainingDataset(TrainingDataset):
                         **self.augmentations[f'RandomBrightnessContrast {region}'],
                     )
                 )  
+        
         return transforms
 
 
@@ -540,24 +554,26 @@ class InferenceDataset(torch.utils.data.Dataset):
         Initialize dataset instance.
 
         Args:
-            df: dataframe with dataset info.
+            df:  Dataframe with dataset info.
         """
         # retrieve paths to images and annotations
         self.image_paths = list(df['image_paths'])
 
+
     def __len__(self) -> int:
         return len(self.image_paths)
+
 
     def __getitem__(self, index: int) -> torch.Tensor:
         """ 
         Returns indexed image from dataset.
 
         Args:
-            index: index for selecting image.
+            index:  Index for selecting image.
 
         Returns:
-            image: image tensor with shape (channels=3, rows, columns), 
-                   rescaled in the 0.0-1.0 range and optionally augmented.
+            image:  Image tensor with shape (channels=3, rows, columns), 
+                rescaled in the 0.0-1.0 range and optionally augmented.
         """
         # load image
         image_path = self.image_paths[index]
@@ -585,11 +601,12 @@ def create_label(annotation: np.ndarray, divisor: float = 100) -> np.ndarray:
     create label from the annotation array.
 
     Args:
-        annotation: annotation array consisting of mask and separate regions.
-        divisor: input images are cropped to be divisible by the specified number.
+        annotation:  Annotation array consisting of mask and separate regions.
+        divisor:  Input images are cropped to be divisible by the specified number.
     
     returns:
-        label: label array consisting of binary mask, horizontal map, and vertical map.
+        label:  Label array consisting of binary mask, horizontal map, 
+            and vertical map.
     """
     # convert annotations to zero and one
     annotation = np.where(annotation > 0.5, 1, 0)
@@ -609,7 +626,6 @@ def create_label(annotation: np.ndarray, divisor: float = 100) -> np.ndarray:
         np.linspace(0, tissue_mask.shape[2]-1, tissue_mask.shape[2]),
         np.linspace(0, tissue_mask.shape[1]-1, tissue_mask.shape[1]),
     )
-
     # loop over regions
     for i in range(regions.shape[0]):
         region = regions[i, ...]
@@ -646,4 +662,5 @@ def create_label(annotation: np.ndarray, divisor: float = 100) -> np.ndarray:
         [tissue_mask, marking_mask, horizontal_regions/divisor, vertical_regions/divisor],
         axis=0,
     )
+    
     return label

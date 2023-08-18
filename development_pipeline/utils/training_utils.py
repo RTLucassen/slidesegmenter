@@ -36,12 +36,14 @@ class DiceLoss(nn.Module):
         Initialize Dice loss.
 
         Args:
-            sigmoid: specify if a sigmoid instead of a softmax function is applied.
-                     if there is only a single class, the sigmoid is automatically used.
-            class_weights: if not None, compute a weighted average of the loss for the classes. 
-            smooth_nom: small value added to the nominator to better handle negative cases.
-            smooth_denom: small value added to the denominator to prevent division 
-                          by zero errors and to better handle negative cases.
+            sigmoid:  Specify if a sigmoid instead of a softmax function is applied.
+                If there is only a single class, the sigmoid is automatically used.
+            class_weights:  If not None, compute a weighted average of the loss 
+                for the classes. 
+            smooth_nom:  Small value added to the nominator to better handle 
+                negative cases.
+            smooth_denom:  Small value added to the denominator to prevent division 
+                by zero errors and to better handle negative cases.
         """
         super().__init__()
         # define the instance attributes
@@ -50,16 +52,15 @@ class DiceLoss(nn.Module):
         self.smooth_denom = smooth_denom
         self.class_weights = class_weights
 
+
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            logit: logit predictions of shape: (batch, class, X, Y, ...).
-            y_true: true labels of shape: (batch, class, X, Y, ...).
+            logit:  Logit predictions of shape: (batch, class, X, Y, ...).
+            y_true:  True labels of shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: Dice loss averaged over all images in the batch.
+            loss:  Dice loss averaged over all images in the batch.
         """
         # check if the logit prediction and true labels are of equal shape
         if logit.shape != y_true.shape:
@@ -117,14 +118,16 @@ class TverskyLoss(nn.Module):
         Initialize Tversky loss.
 
         Args:
-            sigmoid: specify if a sigmoid instead of a softmax function is applied.
-                     if there is only a single class, the sigmoid is automatically used.
-            class_weights: if not None, compute a weighted average of the loss for the classes. 
-            fp_weight: weighting factor for false positives (alpha in paper).
-            fn_weight: weighting factor for false negatives (beta in paper).
-            smooth_nom: small value added to the nominator to better handle negative cases.
-            smooth_denom: small value added to the denominator to prevent division 
-                          by zero errors and to better handle negative cases.
+            sigmoid:  Specify if a sigmoid instead of a softmax function is applied.
+                If there is only a single class, the sigmoid is automatically used.
+            class_weights:  If not None, compute a weighted average of the loss 
+                for the classes. 
+            fp_weight:  Weighting factor for false positives (alpha in paper).
+            fn_weight:  Weighting factor for false negatives (beta in paper).
+            smooth_nom:  Small value added to the nominator to better handle 
+                negative cases.
+            smooth_denom:  Small value added to the denominator to prevent division 
+                by zero errors and to better handle negative cases.
         """
         super().__init__()
         # define the instance attributes
@@ -135,16 +138,15 @@ class TverskyLoss(nn.Module):
         self.smooth_denom = smooth_denom
         self.class_weights = class_weights
 
+
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            logit: logit predictions of shape: (batch, class, X, Y, ...).
-            y_true: true labels of shape: (batch, class, X, Y, ...).
+            logit:  Logit predictions of shape: (batch, class, X, Y, ...).
+            y_true:  True labels of shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: Tversky loss averaged over all images in the batch.
+            loss:  Tversky loss averaged over all images in the batch.
         """
         # check if the logit prediction and true labels are of equal shape
         if logit.shape != y_true.shape:
@@ -201,27 +203,28 @@ class FocalLoss(nn.Module):
         Initialize focal loss.
 
         Args:
-            sigmoid: specify if a sigmoid instead of a softmax function is applied.
-                     if there is only a single class, the sigmoid is automatically used.
-            gamma: parameter that governs the relative importance of incorrect predictions.
-                   if gamma == 0.0, the focal loss is equal to the cross-entropy loss.
-            class_weights: if not None, compute a weighted average of the loss for the classes. 
+            sigmoid:  Specify if a sigmoid instead of a softmax function is applied.
+                If there is only a single class, the sigmoid is automatically used.
+            gamma:  Parameter that governs the relative importance of incorrect 
+                predictions. If gamma equals 0.0, the focal loss is equal to the 
+                cross-entropy loss.
+            class_weights:  If not None, compute a weighted average of the loss 
+                for the classes. 
         """
         super().__init__()
         self.sigmoid = sigmoid
         self.gamma = gamma
         self.class_weights = class_weights
 
+
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            logit: logit predictions volumes of shape: (batch, class, X, Y, ...).
-            y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+            logit:  Logit predictions volumes of shape: (batch, class, X, Y, ...).
+            y_true:  True label volumes of matching shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: focal loss averaged over all images in the batch.
+            loss:  Focal loss averaged over all images in the batch.
         """
         # check if the logit prediction and true labels are of equal shape
         if logit.shape != y_true.shape:
@@ -276,16 +279,15 @@ class MSELoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
+
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
-            y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+            y_pred:  Predictions volumes of shape: (batch, class, X, Y, ...).
+            y_true:  True label volumes of matching shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: MSE loss averaged over all images in the batch.
+            loss:  MSE loss averaged over all images in the batch.
         """
         # check if the prediction and true labels are of equal shape
         if y_pred.shape != y_true.shape:
@@ -310,16 +312,15 @@ class MAELoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
+
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
-            y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+            y_pred:  Predictions volumes of shape: (batch, class, X, Y, ...).
+            y_true:  True label volumes of matching shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: MAE loss averaged over all images in the batch.
+            loss:  MAE loss averaged over all images in the batch.
         """
         # check if the prediction and true labels are of equal shape
         if y_pred.shape != y_true.shape:
@@ -351,18 +352,20 @@ class CombinedLoss(nn.Module):
         gamma: float = 0.0,
     ) -> None:
         """
-        Initialize combination of Tversky and focal loss for segmentation, as well 
-        as the combination of MSE loss with respect to the predicted distance map 
-        and the gradient of the predicted distance map.
+        Initialize combination of Tversky and focal loss for segmentation, 
+        as well as the combination of MSE loss with respect to the predicted 
+        distance map and the gradient of the predicted distance map.
 
         Args:
-            device:     
-            weights: if not None, compute a weighted average of the losses. 
-            class_weights: if not None, compute a weighted average of the loss for the classes. 
-            fp_weight: weighting factor for false positives (alpha in paper).
-            fn_weight: weighting factor for false negatives (beta in paper).
-            gamma: parameter that governs the relative importance of incorrect predictions.
-                   if gamma == 0.0, the focal loss is equal to the cross-entropy loss.
+            device:  Torch device specification.    
+            weights:  If not None, compute a weighted average of the losses. 
+            class_weights:  If not None, compute a weighted average of the loss
+                for the classes. 
+            fp_weight:  Weighting factor for false positives (alpha in paper).
+            fn_weight:  Weighting factor for false negatives (beta in paper).
+            gamma:  Parameter that governs the relative importance of incorrect 
+                predictions. If gamma equals 0.0, the focal loss is equal to 
+                the cross-entropy loss.
         """
         super().__init__()
 
@@ -395,16 +398,15 @@ class CombinedLoss(nn.Module):
         grad_kernel[0, 1, 2, 1] = 1 
         self.grad_kernel = grad_kernel.to(device)
 
+
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
-        Forward pass.
-        
         Args:
-            y_pred: predictions volumes of shape: (batch, class, X, Y, ...).
-            y_true: true label volumes of matching shape: (batch, class, X, Y, ...).
+            y_pred:  Predictions volumes of shape: (batch, class, X, Y, ...).
+            y_true:  True label volumes of matching shape: (batch, class, X, Y, ...).
         
         Returns:
-            loss: Combined loss averaged over all images in the batch.
+            loss:  Combined loss averaged over all images in the batch.
         """
         # calculate the combined loss
         losses = {
