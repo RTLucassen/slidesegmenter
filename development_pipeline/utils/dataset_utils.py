@@ -113,13 +113,11 @@ class TrainingDataset(torch.utils.data.Dataset):
             self.transforms['color']['all'],
         )
 
-
     def __len__(self) -> int:
         if self.length is None:
             return len(self.image_paths)
         else:
             return self.length
-
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor]:
         """ 
@@ -168,7 +166,6 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return image
 
-
     def get_padding_mode(self) -> dict[str, Any]:
         """
         Parses specified augmentation settings for padding configuration and
@@ -197,7 +194,6 @@ class TrainingDataset(torch.utils.data.Dataset):
                     p += mode['p']
         else:
             return {'mode': 'reflect'} # default
-
 
     def get_padding(self, image_shape: tuple[int, int]) -> tuple:
         """
@@ -279,7 +275,6 @@ class TrainingDataset(torch.utils.data.Dataset):
         center_crop_coords = [(top, left), (top+shape[0], left+shape[1])]
 
         return padding, center_crop_coords
-
 
     def get_aug_transforms(self) -> dict[str, dict]:
         """
@@ -410,7 +405,6 @@ class SupervisedTrainingDataset(TrainingDataset):
             self.transforms['color']['background'],
         )
 
-
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         """ 
         Returns indexed image-label pair from dataset.
@@ -512,7 +506,6 @@ class SupervisedTrainingDataset(TrainingDataset):
         
         return tuple(output)
 
-
     def get_aug_transforms(self) -> list:
         """
         Parses specified augmentation settings and configures augmentation transforms.
@@ -559,10 +552,8 @@ class InferenceDataset(torch.utils.data.Dataset):
         # retrieve paths to images and annotations
         self.image_paths = list(df['image_paths'])
 
-
     def __len__(self) -> int:
         return len(self.image_paths)
-
 
     def __getitem__(self, index: int) -> torch.Tensor:
         """ 

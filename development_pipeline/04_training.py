@@ -79,6 +79,7 @@ class Settings():
             'generator': torch.Generator(),
         }
 
+
 # specify experiment and dataset settings
 configuration = {
     "experiment_name": f'Modified_U-Net_{datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")}',

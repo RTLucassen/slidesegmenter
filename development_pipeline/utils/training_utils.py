@@ -52,7 +52,6 @@ class DiceLoss(nn.Module):
         self.smooth_denom = smooth_denom
         self.class_weights = class_weights
 
-
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
         Args:
@@ -138,7 +137,6 @@ class TverskyLoss(nn.Module):
         self.smooth_denom = smooth_denom
         self.class_weights = class_weights
 
-
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
         Args:
@@ -216,7 +214,6 @@ class FocalLoss(nn.Module):
         self.gamma = gamma
         self.class_weights = class_weights
 
-
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
         Args:
@@ -279,7 +276,6 @@ class MSELoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
         Args:
@@ -311,7 +307,6 @@ class MAELoss(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
@@ -397,7 +392,6 @@ class CombinedLoss(nn.Module):
         grad_kernel[0, 1, 0, 1] = -1 
         grad_kernel[0, 1, 2, 1] = 1 
         self.grad_kernel = grad_kernel.to(device)
-
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 

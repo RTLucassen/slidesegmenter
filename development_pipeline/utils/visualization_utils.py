@@ -46,22 +46,17 @@ class Index:
         if self.__idx < self.__minimum or self.__idx > self.__maximum:
             raise ValueError('Initialized index outside of specified range.')
     
-
     def current(self) -> int:
         return self.__idx
-    
 
     def minimum(self) -> int:
         return self.__minimum
 
-
     def maximum(self) -> int:
         return self.__maximum
-    
 
     def add(self, step: int = 1) -> None:
         self.__idx = min(self.__idx+step, self.__maximum)
-
 
     def subtract(self, step: int = 1) -> None:
         self.__idx = max(self.__idx-step, self.__minimum)
@@ -111,7 +106,6 @@ class BasicEventTracker:
         # set the first image
         self.__update()
 
-
     def onscroll(self, event: matplotlib.backend_bases.MouseEvent) -> None:
         """ 
         Add or subtract 'self.__speed' from the instance index when scrolling 
@@ -128,7 +122,6 @@ class BasicEventTracker:
             self.__idx.subtract(self.__speed)
             self.__update()
 
-
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Increase the scrolling speed while 'SHIFT' is pressed.
@@ -139,7 +132,6 @@ class BasicEventTracker:
             if key == 'shift' and self.__speed == 1:
                 self.__speed = self.__scroll_speed
 
-
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Reset the scrolling speed when 'SHIFT' is released.
@@ -149,7 +141,6 @@ class BasicEventTracker:
             # decreases scrolling speed
             if key == 'shift' and self.__speed == self.__scroll_speed:
                 self.__speed = 1
-
 
     def __update(self) -> None:
         """ 
@@ -224,7 +215,6 @@ class EventTracker:
         # set the first image
         self.__update()
 
-
     def onscroll(self, event: matplotlib.backend_bases.MouseEvent) -> None:
         """ 
         Add or subtract 'self.__speed' from the selected index (either instance 
@@ -242,7 +232,6 @@ class EventTracker:
             self.__selected_idx.subtract(self.__speed)
             self.__update()
 
-
     def keypress(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Increase the scrolling speed when 'SHIFT' is pressed.
@@ -256,7 +245,6 @@ class EventTracker:
             if key == 'control' and self.__selected_idx == self.__idx:
                 self.__selected_idx = self.__class_idx
 
-
     def keyrelease(self, event: matplotlib.backend_bases.KeyEvent) -> None:
         """ 
         Reset the scrolling speed when 'SHIFT' is released.
@@ -269,7 +257,6 @@ class EventTracker:
             # scrolling now influences instance index
             if key == 'control' and self.__selected_idx == self.__class_idx:
                 self.__selected_idx = self.__idx
-
 
     def __update(self) -> None:
         """ 

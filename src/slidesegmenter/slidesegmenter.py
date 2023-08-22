@@ -86,7 +86,6 @@ class SlideSegmenter:
         # load and configure model
         self._load_model()
 
-
     def _load_model(
         self, 
         model: Optional[torch.nn.Module] = None,
@@ -166,7 +165,6 @@ class SlideSegmenter:
         # determine by what value the image height and width must be divisible
         self.divisor = np.prod(settings['model']['downsample_factors'])
 
-
     def segment(
         self, 
         image: Union[np.ndarray, torch.Tensor],
@@ -183,7 +181,7 @@ class SlideSegmenter:
         (4) Optionally divide the tissue segmentations into separate cross-sections.
 
         Args:
-            image:  Whole slide image (at 1.25x) [uint8] as (height, width, channel)
+            image:  Whole slide image (at 1.25x) [0.0-1.0] as (height, width, channel)
                 for channels last or (channel, height, width) for channels first.
             tissue_threshold:  Threshold value for binarizing the predicted 
                 tissue segmentation ('default': the threshold value based on the 
@@ -194,14 +192,14 @@ class SlideSegmenter:
             return_distance_maps:  Indicates whether the distance maps are returned.
         
         Returns:
-            tissue_segmentation:  Segmentation for whole slide image [float32] 
+            tissue_segmentation:  Segmentation for whole slide image [0.0-1.0] 
                 (at 1.25x) as (height, width, channel) for channels last or 
                 (channel, height, width) for channels first.
-            pen_marking_segmentation:  Segmentation for whole slide image [float32] 
+            pen_marking_segmentation:  Segmentation for whole slide image [0.0-1.0] 
                 (at 1.25x) as (height, width, channel) for channels last or 
                 (channel, height, width) for channels first.
             distance_maps:  Image with predicted horizontal and vertical distance 
-                [float32] with respect to centroid as (height, width, channel) 
+                [0.0-1.0] with respect to centroid as (height, width, channel) 
                 for channels last or (channel, height, width) for channels first.
         """
         # check image object type, convert to numpy array if necessary
@@ -331,7 +329,6 @@ class SlideSegmenter:
             return output[0]
         else:
             return tuple(output)
-
 
     def _separate_cross_sections(
         self,

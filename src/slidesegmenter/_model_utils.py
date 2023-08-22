@@ -90,7 +90,6 @@ class Block(nn.Module):
             self.norm2 = self.normalization(output_channels)
         self.act2 = self.activation(inplace=True)
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -159,7 +158,6 @@ class Down(Block):
         else:
             raise ValueError('Invalid argument for downsample method.')
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -223,7 +221,6 @@ class Up(Block):
             )    
         else:
             raise ValueError('Invalid argument for upsample method.')       
-
 
     def forward(self, x_down: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """
@@ -352,7 +349,6 @@ class ModifiedUNet(nn.Module):
         # to all convolutional layers to initialize weights
         self.layers.apply(self.initialize_weights)
 
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -406,7 +402,6 @@ class ModifiedUNet(nn.Module):
 
         return out
 
-
     def initialize_weights(self, layer: torch.nn) -> None:
         """
         Initialize the weights using the specified initialization method
@@ -437,7 +432,6 @@ class ModifiedUNet(nn.Module):
                     nn.init.zeros_(layer.bias)
             else:
                 raise ValueError('Invalid argument for initialization method.')
-
 
     def __repr__(self):
         """
