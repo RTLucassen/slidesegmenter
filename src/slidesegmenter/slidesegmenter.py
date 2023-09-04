@@ -160,6 +160,7 @@ class SlideSegmenter:
             name: model_state_dict[name] for name, _ in self.model.named_parameters()
         }
         self.model.load_state_dict(model_state_dict)
+        self.model.to(self.device)
         self.model.eval()
 
         # determine by what value the image height and width must be divisible
