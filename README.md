@@ -1,5 +1,5 @@
 # SlideSegmenter
-*SlideSegmenter* is a Python package for tissue and pen marking segmentation 
+*SlideSegmenter* is a Python 3.9+ package for tissue and pen marking segmentation 
 on low-magnification (1.25x) whole slide images (WSIs). 
 
 ## Installing *SlideSegmenter*
