@@ -166,6 +166,16 @@ class SlideSegmenter:
         # determine by what value the image height and width must be divisible
         self.divisor = np.prod(settings['model']['downsample_factors'])
 
+    def change_device(self, device: str) -> None:
+        """
+        Change the device for model inference.
+
+        Args:
+            device:  Specifies whether model inference is performed on the cpu or gpu.
+        """
+        self.device = device
+        self.model.to(self.device)
+
     def segment(
         self, 
         image: Union[np.ndarray, torch.Tensor],
