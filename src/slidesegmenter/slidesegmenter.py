@@ -329,7 +329,7 @@ class SlideSegmenter:
             distance_maps = np.concatenate([horizontal_distance[..., None], 
                                             vertical_distance[..., None]], 
                                             axis=-1)
-            output.append(distance_maps)
+            output.append(distance_maps*self.hyperparameters['distance_factor'])
 
         # change the last channel to the first channel
         if not self.channels_last:
