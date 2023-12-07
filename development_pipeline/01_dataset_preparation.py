@@ -24,26 +24,46 @@ from config import images_folder, raw_folder
 
 
 # define settings
-subfolder = 'dataset'
+subfolder = 'dataset3'
 magnification = 1.25 # (low) magnification value
-extension = 'png'
+output_extension = 'png'
 
 if __name__ == '__main__':
 
     # create a new folder to store the low magnification images
     images_subfolder = images_folder / subfolder
-    images_subfolder.mkdir()
+    if not images_subfolder.exists():
+        images_subfolder.mkdir()
+    else:
+        raise FileExistsError
 
     # define slide handler instance for loading and saving WSIs
     loader = SlideLoader()
     loader.progress_bar = False
 
-    # loop over all WSIs
-    for path in tqdm(list(raw_folder.iterdir())):
+    # loop over all WSI paths
+    path_dict = {}
+    for path in list(raw_folder.iterdir()):
+        # get the name
+        name = path.name
+        for extension in ['.1.dcm', '.2.dcm', '.3.dcm', '.4.dcm', '.ndpi']:
+            name = name.replace(extension, '')
+        
+        # group paths with the same name
+        if name not in path_dict:
+            path_dict[name] = [str(path)]
+        else:
+            path_dict[name].append(str(path))
+
+    # loop over all grouped WSI paths
+    for name, paths in tqdm(path_dict.items()):
         # load high magnification WSI and return low magnification image
-        loader.load_slide(str(path))
+        loader.load_slide(paths)
         image = loader.get_image(magnification)[None, ...]
 
         # save the low magnification image
-        path = images_subfolder / f'{path.stem}.{extension}'
-        sitk.WriteImage(sitk.GetImageFromArray(image), str(path))
+        path = images_subfolder / f'{name}.{output_extension}'
+        if not path.exists():
+            sitk.WriteImage(sitk.GetImageFromArray(image), str(path))
+        else:
+            raise FileExistsError
