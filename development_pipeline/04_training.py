@@ -79,6 +79,8 @@ class Settings():
             'generator': torch.Generator(),
         }
 
+# force the use of the CPU even if a GPU is available
+USE_CPU = False
 
 # specify experiment and dataset settings
 configuration = {
@@ -176,6 +178,10 @@ configuration = {
             "p": 0.2,
             "sigma_limit": (0.00001, 2),
         },
+        "JPEGCompression": {
+            "p": 0.2,
+            "quality_limit": (25, 100),
+        },
         "Padding": [
             {
                 "mode": "reflect",
@@ -226,7 +232,7 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
 
     # configure the number of workers and the device
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cuda' if (torch.cuda.is_available() and not USE_CPU) else 'cpu'
     logger.info(f'CUDA available: {torch.cuda.is_available()}')
     logger.info(f'Device: {device}')
 

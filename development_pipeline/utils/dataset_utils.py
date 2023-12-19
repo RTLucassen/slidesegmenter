@@ -350,8 +350,63 @@ class TrainingDataset(torch.utils.data.Dataset):
                     **self.augmentations['GaussianBlur'],
                     blur_limit=(15, 15), 
                 )
+            )
+        if 'JPEGCompression' in self.augmentations:
+            transforms['color']['all'].append(
+                JPEGCompression(
+                    **self.augmentations['JPEGCompression'],
+                )
             )  
         return transforms
+
+
+def compress(image: np.ndarray, quality: int) -> np.ndarray:
+    """
+    Apply JPEG compression to image.
+
+    Args:
+        image:  Image to be compressed.
+        quality:  Value between 0 and 100 to indicate the compression quality.
+    
+    Returns:
+        compressed_image:  Image after compression.
+    """
+    compression_parameters = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+    _, encoded_image = cv2.imencode('.jpg', image, compression_parameters)
+    compressed_image = cv2.imdecode(encoded_image, 1)
+
+    return compressed_image
+
+
+class JPEGCompression(A.ImageOnlyTransform):
+    """
+    Apply JPEG compression to image.
+
+    Args:
+        quality_limit (int, int): Range of compression quality. 
+            Default: (50, 100).
+        p (float): probability of applying the transform. Default: 0.5.
+
+    Targets:
+        image
+
+    Image types:
+        any
+    """
+    def __init__(self, quality_limit: tuple[int, int] = (50, 100), 
+                 always_apply: bool = False, p: float = 0.5) -> None:
+        super(JPEGCompression, self).__init__(always_apply, p)
+        # initialize instance attributes
+        self.quality_limit = quality_limit
+
+    def apply(self, image, quality=50, **params):
+        return compress(image, quality)
+
+    def get_params(self):
+        return {"quality": random.randint(*self.quality_limit)}
+
+    def get_transform_init_args_names(self):
+        return ("quality",)
 
 
 class SupervisedTrainingDataset(TrainingDataset):
