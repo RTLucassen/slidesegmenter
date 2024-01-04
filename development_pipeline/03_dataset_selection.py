@@ -19,13 +19,30 @@ and randomly assign them to the training or validation set.
 
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Optional
 
 import natsort
+import numpy as np
 import pandas as pd
+import SimpleITK as sitk
 
 from config import PROJECT_SEED
 from config import annotations_folder, images_folder, sheets_folder
+
+
+def check_pen_marking(path: Optional[Path]) -> bool:
+    """
+    Load annotation image and determine whether pen markings are present.
+    """
+    if path is None:
+        return False
+
+    annotation = sitk.GetArrayFromImage(sitk.ReadImage(path))
+    pen_marking_present = bool(np.sum(annotation[1, ...]) > 0)
+
+    return pen_marking_present
 
 
 # define settings
@@ -33,10 +50,17 @@ subfolders = ['dataset']
 all_cases = 'all_cases.xlsx'
 dataset_sheet = 'dataset.xlsx'
 include_annotations = True
-N_val = 15
-N_test = 25
+include_pen_marking_presence = True
+N_val = 20
+N_test = 40
 
 if __name__ == '__main__':
+
+    # check settings condition
+    if include_pen_marking_presence and not include_annotations:
+        raise ValueError(
+            'Pen marking information can only be included if annotations are available.'
+        )
 
     # seed randomness
     random.seed(PROJECT_SEED)
@@ -94,7 +118,7 @@ if __name__ == '__main__':
     # check if the specified name for the dataset sheet already exists
     if N_test+N_val > len(image_paths):
         raise ValueError('The number of images for validation and testing exceeds'
-                         ' the total amount of images available.')
+                        ' the total amount of images available.')
     N_train = len(image_paths)-N_test-N_val
 
     # load spreadsheet with all case names and patient pseudo IDs for patient-level split
@@ -114,7 +138,7 @@ if __name__ == '__main__':
         # add pseudo ID to dictionary
         if pseudo_id not in cases:
             cases[pseudo_id] = {'image_paths': [], 'annotation_paths': []}
-       
+    
         # add item to dictionary with pseudo ID as key
         cases[pseudo_id]['image_paths'].append(image_path.as_posix())
         if include_annotations:
@@ -124,7 +148,7 @@ if __name__ == '__main__':
     data_dict = {'set': [], 'pseudo_id': [], 'image_paths': []}
     if include_annotations:
         data_dict['annotation_paths'] = []
-
+    
     # get all pseudo IDs
     pseudo_ids = list(cases.keys())
     # loop until all images are assigned to a set
@@ -152,6 +176,13 @@ if __name__ == '__main__':
                     pseudo_ids.remove(pseudo_id)
                     break
 
+    # add information about pen marking presence
+    if include_pen_marking_presence:
+        paths = [annotations_folder/path for path in data_dict['annotation_paths']]
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(check_pen_marking, paths)
+            data_dict['pen_marking_present'] = results
+        
     # save partitions
     df = pd.DataFrame.from_dict(data_dict)
     df.to_excel(sheets_folder/dataset_sheet, index=False)
