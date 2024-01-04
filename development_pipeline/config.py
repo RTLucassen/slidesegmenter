@@ -20,14 +20,14 @@ import platform
 from pathlib import Path
 
 # define project seed
-PROJECT_SEED = 222
+PROJECT_SEED = 64
 
 # define paths
 if platform.system() == 'Windows':
-    project_root = r'C:\Users\rlucasse\Documents\projects\tissue_segmentation'
+    project_root = r'C:\Users\rlucasse\Documents\projects\slidesegmenter'
     openslide_path = r'C:\Users\rlucasse\Documents\openslide-win64-20221111\bin'
 elif platform.system() == 'Linux':
-    project_root = r'/hpc/dla_patho/ruben/projects/tissue_segmentation'
+    project_root = r'/hpc/dlab_skin_ai/projects/slidesegmenter'
     openslide_path = False
 else:
     print(f'Platform {platform.system()} was not configured.')
