@@ -4,5 +4,7 @@ __pycache__
 *.sh
 *.egg-info
 
+other
+
 00_data_selection.py
 07_inference.py
