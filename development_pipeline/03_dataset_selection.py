@@ -49,6 +49,7 @@ def check_pen_marking(path: Optional[Path]) -> bool:
 subfolders = ['dataset']
 all_cases = 'all_cases.xlsx'
 dataset_sheet = 'dataset.xlsx'
+overwrite = False
 include_annotations = True
 include_pen_marking_presence = True
 N_val = 20
@@ -112,7 +113,7 @@ if __name__ == '__main__':
                         annotation_paths.append(None)
     
     # check if the specified name for the dataset sheet already exists
-    if (sheets_folder / dataset_sheet).exists():
+    if (sheets_folder / dataset_sheet).exists() and not overwrite:
         raise FileExistsError('Dataset sheet name already exists.')
 
     # check if the specified name for the dataset sheet already exists
@@ -185,4 +186,4 @@ if __name__ == '__main__':
         
     # save partitions
     df = pd.DataFrame.from_dict(data_dict)
-    df.to_excel(sheets_folder/dataset_sheet, index=False)
+    df.to_excel(sheets_folder/dataset_sheet, sheet_name='images', index=False)

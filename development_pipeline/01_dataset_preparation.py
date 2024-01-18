@@ -24,7 +24,7 @@ from config import images_folder, raw_folder
 
 
 # define settings
-subfolder = 'dataset3'
+subfolder = 'dataset'
 magnification = 1.25 # (low) magnification value
 output_extension = 'png'
 

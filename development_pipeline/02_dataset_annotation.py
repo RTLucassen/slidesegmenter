@@ -24,7 +24,7 @@ from config import annotations_folder, images_folder
 
 # define names        
 classes = ['Tissue', 'Pen marking']
-subfolder = 'dataset2'
+subfolder = 'dataset'
 
 # define settings
 rotate_portrait = True
