@@ -37,27 +37,28 @@ from utils.models import ModifiedUNet
 # define settings
 dataset_sheet = 'dataset.xlsx'
 sets = ['val']
-model_subfolder = 'Modified_U-Net_2023-08-08_16h26m26s'
+model_subfolder = 'Modified_U-Net_2024-01-10_13h41m39s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I48500.tar'
+model_checkpoint = 'checkpoint_I97500.tar'
 device = 'cpu'
 save_results = True
 save_predictions = True
 
 # define hyperparameter values for thresholds selected based on previous step
-tissue_threshold = 0.3
-pen_threshold = 0.1
+tissue_threshold = 0.5
+pen_threshold = 0.5
+
 # define hyperparameter values for grid search
-pixels_per_bin_values = [10, 15, 20]
-sigmas = [None, 0.5, 1.0, 2.0, 2.5, 3.0, 3.5, 4.0]
-filter_sizes = [5, 7, 9, 11, 15]
+pixels_per_bin_values = [10, 20]
+sigmas = [None, 1.0, 2.0, 3.0, 4.0]
+filter_sizes = [5, 9, 15]
 percentiles = [95, 98, 99, 99.5]
 
 
 if __name__ == '__main__':
 
     # define output path
-    output_path = predictions_folder / f'SEP-{"_".join(sets)}-{model_subfolder}'
+    output_path = predictions_folder / f'SEP-{"_".join(sets)}-{model_subfolder}-{"&".join(sets)}'
     if output_path.exists():
         raise FileExistsError('Output directory already exists.')
     else:
@@ -90,7 +91,7 @@ if __name__ == '__main__':
         num_workers=1,
         pin_memory=True,
     )
-    # configure model
+    # configure model and reset hyperparameters
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
     segmenter = SlideSegmenter(channels_last=False, pen_marking_segmentation=False)
@@ -109,6 +110,10 @@ if __name__ == '__main__':
             tissue_annotation = annotations[:, 0:1, ...]
             annotated_cross_sections = int(cross_sections)
 
+            # assign hyperparameter values 
+            segmenter.hyperparameters['padding_mode'] = 'constant'
+            segmenter.hyperparameters['padding_value'] = 1
+ 
             # get the model predictions
             tissue_segmentation, distance_maps = segmenter.segment(
                 image=image[0, ...], 
@@ -129,15 +134,12 @@ if __name__ == '__main__':
                     results[index] = {key: [] for key in keys}
 
                 # assign hyperparameter values 
-                segmenter.hyperparameters = {
-                    'pixels_per_bin': hyperparameters[0],
-                    'sigma': hyperparameters[1],
-                    'filter_size': hyperparameters[2],
-                    'percentile': hyperparameters[3],
-                    "padding_mode": "constant",
-                    "padding_value": 0,
-                    "distance_factor": 100,
-                }                
+                segmenter.hyperparameters['pixels_per_bin'] = hyperparameters[0]
+                segmenter.hyperparameters['sigma'] = hyperparameters[1]
+                segmenter.hyperparameters['filter_size'] = hyperparameters[2]
+                segmenter.hyperparameters['percentile'] = hyperparameters[3]
+                segmenter.hyperparameters['distance_factor'] = 100
+
                 # separate cross-sections
                 separated_cross_sections, centroids = segmenter._separate_cross_sections(
                     segmentation=tissue_segmentation, 
@@ -159,7 +161,7 @@ if __name__ == '__main__':
                     abs(annotated_cross_sections-predicted_cross_sections),
                 )
 
-                if save_predictions:
+                if save_predictions and len(list(combinations)) == 0:
                     # create image
                     if isinstance(image, torch.Tensor):
                         image = image.numpy()

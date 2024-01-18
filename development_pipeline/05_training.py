@@ -89,7 +89,7 @@ configuration = {
     "seed": PROJECT_SEED,
     "model_name": "ModifiedUNet",
     "compile_model": False,
-    "checkpoint_path": None,
+    "checkpoint_path": False,
 
     # specify model hyperparameters
     "model": {
@@ -108,11 +108,13 @@ configuration = {
         "iterations_per_checkpoint": 500,
         "iterations_per_update": 5,
         "loss": {
-            "weights": [1, 1, 1, 1],
+            "weights": [1, 10, 1, 1],
             "class_weights": [1, 1],
             "fp_weight": 0.5,
             "fn_weight": 0.5,
             "gamma": 0,
+            "smooth_nom": 1,
+            "smooth_denom": 1,
         },
     },
     "dataloader": {
@@ -129,7 +131,7 @@ configuration = {
             "p": 0.25,
         },
         "Affine": {
-            "p": 0.50,
+            "p": 0.5,
             "translate_px": {
                "x": (-256, 256), 
                "y": (-256, 256),
@@ -143,23 +145,35 @@ configuration = {
         "VerticalFlip": {
             "p": 0.5,
         },
-        "HueSaturationValue tissue": {
-            "p": 0.50,
+        "HueSaturationValue": {
+            "p": 0.5,
             "hue_shift_limit": 25,
-            "sat_shift_limit": 25,
-            "val_shift_limit": 0,
-        },
-        "HueSaturationValue pen+background": {
-            "p": 0.50,
-            "hue_shift_limit": 100,
-            "sat_shift_limit": 0,
+            "sat_shift_limit": 5,
             "val_shift_limit": 0,
         },
         "HueSaturationValue pen": {
-            "p": 0.50,
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0,
+        },
+        "HueSaturationValue tissue": {
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0,
+        },
+        "HueSaturationValue non-tissue": {
+            "p": 0.0,
             "hue_shift_limit": 0,
-            "sat_shift_limit": 50,
-            "val_shift_limit": 50,
+            "sat_shift_limit": 0,
+            "val_shift_limit": 0,
+        },
+        "HueSaturationValue background": {
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0,
         },
         "RandomBrightnessContrast": {
            "p": 0.25,
@@ -185,11 +199,11 @@ configuration = {
         "Padding": [
             {
                 "mode": "reflect",
-                "p": 0.8,
+                "p": 0.9,
             },
             {
                 "mode": "constant",
-                "p": 0.1,
+                "p": 0.0,
                 "value": 0,
             }, 
             {
@@ -197,7 +211,11 @@ configuration = {
                 "p": 0.1,
                 "value": 255,
             },
-        ]
+        ],
+        "PenMarkings": {
+            "p": 0.5,
+            "N": (1, 8),
+        }
     }
 }
 
@@ -245,22 +263,26 @@ if __name__ == '__main__':
     logger.info(f'Using seed: {settings.seed}')
 
     # load the dataset information
-    df = pd.read_excel(sheets_folder / settings.dataset_filename)
+    df_all = pd.read_excel(sheets_folder / settings.dataset_filename, sheet_name='images')
+    df_pen = pd.read_excel(sheets_folder / settings.dataset_filename, sheet_name='pen_markings')
     
     # create full image and annotation paths
-    for column, folder in zip(['image_paths', 'annotation_paths'], [images_folder, annotations_folder]):
-        full_paths = []
-        for relative_path in list(df[column]):
-            full_paths.append((folder / relative_path).as_posix())      
-        df[column] = full_paths
+    for df in [df_all, df_pen]:
+        for column, folder in zip(['image_paths', 'annotation_paths'], [images_folder, annotations_folder]):
+            full_paths = []
+            for relative_path in list(df[column]):
+                full_paths.append((folder / relative_path).as_posix())      
+            df[column] = full_paths
 
     # separate splits
-    df_train = df[df['set']=='train']
-    df_val = df[df['set']=='val']
+    df_train = df_all[df_all['set']=='train']
+    df_pen_train = df_pen[df_pen['set']=='train']
+    df_val = df_all[df_all['set']=='val']
 
     # initialize training dataset instance and dataloader
     train_dataset = SupervisedTrainingDataset(
         df=df_train,
+        df_pen=df_pen_train,
         length=settings.training['iterations']*settings.dataloader['batch_size'],
         shape=settings.dataloader['image_shape'],
         max_shape=settings.dataloader['max_image_shape'],
@@ -278,6 +300,7 @@ if __name__ == '__main__':
     # initialize validation dataset instance and dataloader
     val_dataset = SupervisedTrainingDataset(
         df=df_val,
+        df_pen=None,
         length=None,
         shape=None,
         max_shape=None,
@@ -297,7 +320,7 @@ if __name__ == '__main__':
         model = ModifiedUNet(**settings.model)
     else:
         raise ValueError('Model name was not recognized.')
-    
+
     # load checkpoint if specified
     if isinstance(settings.checkpoint_path, str):
         # load the checkpoint model settings
@@ -383,6 +406,8 @@ if __name__ == '__main__':
         fp_weight=settings.training['loss']['fp_weight'],
         fn_weight=settings.training['loss']['fn_weight'],
         gamma=settings.training['loss']['gamma'],
+        smooth_nom=settings.training['loss']['smooth_nom'],
+        smooth_denom=settings.training['loss']['smooth_denom'],
     )
 
     # start training loop
@@ -390,7 +415,7 @@ if __name__ == '__main__':
     update_losses = {name: [] for name in ['index']+loss_function.names+['sum']}
     validation_losses = {name: [] for name in ['index']+loss_function.names+['sum']}
     for i, (X, y) in tqdm(enumerate(train_dataloader)):
-
+        
         index = i+1
 
         # update learning rate

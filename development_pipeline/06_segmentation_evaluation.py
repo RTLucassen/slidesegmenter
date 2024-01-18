@@ -36,9 +36,9 @@ from utils.models import ModifiedUNet
 # define settings
 dataset_sheet = 'dataset.xlsx'
 sets = ['val']
-model_subfolder = 'Modified_U-Net_2023-08-08_16h26m26s'
+model_subfolder = 'Modified_U-Net_2024-01-10_13h41m39s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I48500.tar'
+model_checkpoint = 'checkpoint_I97500.tar'
 device = 'cpu'
 save_results = True
 save_predictions = True
@@ -47,14 +47,14 @@ save_predictions = True
 segmentation_thresholds = np.arange(0, 1.01, 0.01)
 
 # define threshold values for evaluation
-tissue_threshold = 0.3
-pen_threshold = 0.1
+tissue_threshold = None # 0.5
+pen_threshold = None # 0.5
 
 
 if __name__ == '__main__':
 
     # define output path
-    output_path = predictions_folder / f'SEG-{"_".join(sets)}-{model_subfolder}'
+    output_path = predictions_folder / f'SEG-{"_".join(sets)}-{model_subfolder}-{"&".join(sets)}'
     if output_path.exists():
         raise FileExistsError('Output directory already exists.')
     else:
@@ -124,7 +124,7 @@ if __name__ == '__main__':
                     # binarize the segmentation predictions
                     binary_tissue_prediction = np.where(tissue_prediction>=threshold, 1, 0)[None, ...]
                     binary_pen_prediction = np.where(pen_prediction>=threshold, 1, 0)[None, ...]
-                    
+             
                     # calculate dice scores
                     tissue_dice = dice_score(
                         y_hat=binary_tissue_prediction, 
@@ -148,8 +148,8 @@ if __name__ == '__main__':
                 # binarize the segmentation predictions
                 binary_tissue_prediction = np.where(tissue_prediction>=tissue_threshold, 1, 0)[None, ...]
                 binary_pen_prediction = np.where(pen_prediction>=pen_threshold, 1, 0)[None, ...]
-                
-                # calculate dice scores
+   
+                # calculate dice scoresq
                 tissue_dice = dice_score(
                     y_hat=binary_tissue_prediction, 
                     y_true=tissue_annotation,
