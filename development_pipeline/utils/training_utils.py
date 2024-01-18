@@ -196,6 +196,7 @@ class FocalLoss(nn.Module):
         sigmoid: bool = False, 
         gamma: float = 0.0,
         class_weights: Optional[torch.Tensor] = None,
+        aggregation='mean',
     ) -> None:
         """
         Initialize focal loss.
@@ -213,6 +214,12 @@ class FocalLoss(nn.Module):
         self.sigmoid = sigmoid
         self.gamma = gamma
         self.class_weights = class_weights
+        if aggregation == 'mean':
+            self.aggregation = torch.mean
+        elif aggregation == 'sum':
+            self.aggregation = torch.sum
+        else:
+            ValueError('Invalid aggregation function')
 
     def forward(self, logit: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
@@ -258,7 +265,7 @@ class FocalLoss(nn.Module):
         pixelwise_focal_loss = focal_weight * pixelwise_CE
 
         # calculate the class-separated focal loss
-        class_separated_focal_loss = torch.mean(pixelwise_focal_loss, dim=-1)
+        class_separated_focal_loss = self.aggregation(pixelwise_focal_loss, dim=-1)
         
         # multiply the dice score per class by the class weight
         for i, class_weight in enumerate(self.class_weights):
@@ -273,8 +280,14 @@ class FocalLoss(nn.Module):
 
 class MSELoss(nn.Module):
 
-    def __init__(self) -> None:
+    def __init__(self, aggregation='mean') -> None:
         super().__init__()
+        if aggregation == 'mean':
+            self.aggregation = torch.mean
+        elif aggregation == 'sum':
+            self.aggregation = torch.sum
+        else:
+            ValueError('Invalid aggregation function')
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
@@ -294,7 +307,7 @@ class MSELoss(nn.Module):
         y_pred_flat = y_pred.contiguous().view(*y_pred.shape[0:2], -1)
 
         # calculate the mean squared error
-        MSE = torch.mean((y_true_flat-y_pred_flat)**2, dim=-1)
+        MSE = self.aggregation((y_true_flat-y_pred_flat)**2, dim=-1)
 
         # compute the mean loss over the batch
         instance_loss = torch.sum(MSE, dim=1)
@@ -305,8 +318,14 @@ class MSELoss(nn.Module):
 
 class MAELoss(nn.Module):
 
-    def __init__(self) -> None:
+    def __init__(self, aggregation='mean') -> None:
         super().__init__()
+        if aggregation == 'mean':
+            self.aggregation = torch.mean
+        elif aggregation == 'sum':
+            self.aggregation = torch.sum
+        else:
+            ValueError('Invalid aggregation function')
 
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """ 
@@ -326,7 +345,7 @@ class MAELoss(nn.Module):
         y_pred_flat = y_pred.contiguous().view(*y_pred.shape[0:2], -1)
 
         # calculate the mean absolute error
-        MAE = torch.mean(torch.abs(y_true_flat-y_pred_flat), dim=-1)
+        MAE = self.aggregation(torch.abs(y_true_flat-y_pred_flat), dim=-1)
 
         # compute the mean loss over the batch
         instance_loss = torch.sum(MAE, dim=1)
@@ -345,6 +364,8 @@ class CombinedLoss(nn.Module):
         fp_weight: float = 0.5, 
         fn_weight: float = 0.5, 
         gamma: float = 0.0,
+        smooth_nom: float = 1.0,
+        smooth_denom: float = 1.0,
     ) -> None:
         """
         Initialize combination of Tversky and focal loss for segmentation, 
@@ -361,6 +382,10 @@ class CombinedLoss(nn.Module):
             gamma:  Parameter that governs the relative importance of incorrect 
                 predictions. If gamma equals 0.0, the focal loss is equal to 
                 the cross-entropy loss.
+            smooth_nom:  Small value added to the nominator to better handle 
+                negative cases.
+            smooth_denom:  Small value added to the denominator to prevent division 
+                by zero errors and to better handle negative cases.
         """
         super().__init__()
 
@@ -377,6 +402,8 @@ class CombinedLoss(nn.Module):
             class_weights=class_weights,
             fp_weight=fp_weight, 
             fn_weight=fn_weight, 
+            smooth_nom=smooth_nom,
+            smooth_denom=smooth_denom,
         )
         self.focal_loss = FocalLoss(
             sigmoid=True,
@@ -384,7 +411,7 @@ class CombinedLoss(nn.Module):
             class_weights=class_weights,
         )
         self.MSE_loss = MSELoss()
-        
+
         # initialize gradient kernel 
         grad_kernel = torch.zeros((1, 2, 3, 3))
         grad_kernel[0, 0, 1, 0] = -1 
@@ -405,7 +432,8 @@ class CombinedLoss(nn.Module):
         # calculate the combined loss
         losses = {
             'tversky': self.weights[0]*self.tversky_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]),
-            'focal': self.weights[1]*self.focal_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]),
+            'focal': self.weights[1]*(self.focal_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...])
+                                      + self.focal_loss(-y_pred[:, 0:2, ...], 1-y_true[:, 0:2, ...])),
             'MSE dist': self.weights[2]*self.MSE_loss(y_pred[:, 2:, ...], y_true[:, 2:, ...]),
             'MSE grad dist': self.weights[3]*self.MSE_loss(
                 F.conv2d(y_pred[:, 2:, ...], self.grad_kernel), 
