@@ -210,8 +210,8 @@ class SlideSegmenter:
                 (at 1.25x) as (height, width, channel) for channels last or 
                 (channel, height, width) for channels first.
             distance_maps:  Image with predicted horizontal and vertical distance 
-                [0.0-1.0] with respect to centroid as (height, width, channel) 
-                for channels last or (channel, height, width) for channels first.
+                with respect to centroid as (height, width, channel) for channels last 
+                or (channel, height, width) for channels first.
         """
         # check image object type, convert to numpy array if necessary
         if isinstance(image, torch.Tensor):
@@ -279,7 +279,7 @@ class SlideSegmenter:
         top = padding[1][0]
         left = padding[2][0]
         prediction = prediction[:, top:top+height, left:left+width]
-        
+                
         # separate the channels and apply the final activation functions
         # depending on the select tasks
         if self.tissue_segmentation:
@@ -294,7 +294,7 @@ class SlideSegmenter:
                 vertical_distance = prediction[2, ...].numpy()
         elif self.pen_marking_segmentation:
             pen_marking_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
-   
+
         # binarize the segmentations based on the threshold value
         if tissue_threshold == 'default':
             tissue_threshold = self.hyperparameters['tissue_threshold']
@@ -329,7 +329,7 @@ class SlideSegmenter:
             distance_maps = np.concatenate([horizontal_distance[..., None], 
                                             vertical_distance[..., None]], 
                                             axis=-1)
-            output.append(distance_maps*self.hyperparameters['distance_factor'])
+            output.append(distance_maps)
 
         # change the last channel to the first channel
         if not self.channels_last:
