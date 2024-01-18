@@ -35,9 +35,37 @@ class TrainingDataset(torch.utils.data.Dataset):
     Parent dataset class for neural network training.
     """
 
+    pen_transforms = A.Compose([
+        A.VerticalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.HueSaturationValue(
+            p=0.5,
+            hue_shift_limit=255, 
+            sat_shift_limit=0,          
+            val_shift_limit=0, 
+        ),
+        A.RandomBrightnessContrast(
+            p=0.25,
+            brightness_limit=0,
+            contrast_limit=(0, 1.0),
+        ),
+        A.Affine(
+            p=1.0,
+            rotate=(-180, 180), 
+            shear=(-15, 15),
+            scale=(0.8, 1.25), 
+            cval=(255,255,255), 
+        ),
+        A.GaussianBlur(
+            p=0.1,
+            sigma_limit=(0.00001, 2),
+        )
+    ])
+
     def __init__(
         self, 
         df: pd.core.frame.DataFrame,
+        df_pen: Optional[pd.core.frame.DataFrame] = None,
         length: Optional[int] = None,
         shape: Optional[tuple[int, int]] = None,
         max_shape: Optional[tuple[int, int]] = None,
@@ -50,7 +78,8 @@ class TrainingDataset(torch.utils.data.Dataset):
         Initialize dataset instance.
 
         Args:
-            df:  Dataframe with dataset info.
+            df:  Dataframe with dataset information.
+            df_pen:  Dataframe with pen marking dataset information.
             length:  Number of items in the dataset (can be set arbitrarily for
                 training without specifying epochs).
             shape:  Shape of random crops from the images as (height, width).
@@ -100,6 +129,8 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         # retrieve paths to images and annotations
         self.image_paths = list(df['image_paths'])
+        self.pen_image_paths = [] if df_pen is None else list(df_pen['image_paths'])
+        self.pen_images = [sitk.GetArrayFromImage(sitk.ReadImage(p)) for p in self.pen_image_paths]
 
         # compose augmentation function
         self.transforms = self.get_aug_transforms()
@@ -137,14 +168,17 @@ class TrainingDataset(torch.utils.data.Dataset):
         image_path = self.image_paths[index]
         image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))
 
-        # (1) apply the shape altering geometric augmentation transformations
+        # (1) superimpose additional pen markings
+        image = self.superimpose_pen_marking(image=image)
+
+        # (2) apply the shape altering geometric augmentation transformations
         image = self.shape_altering_transforms(image=image)['image']
 
         # add padding to prevent stacked border effects
         padding, center_crop_coords = self.get_padding(image.shape)
         image = np.pad(image, padding, **self.get_padding_mode())
         
-        # (2) apply the shape preserving geometric augmentation transformations
+        # (3) apply the shape preserving geometric augmentation transformations
         image = self.shape_preserving_transforms(image=image)['image']
 
         # get the center crop (before the color augmentations for efficiency)
@@ -155,7 +189,7 @@ class TrainingDataset(torch.utils.data.Dataset):
         if self.shape is not None:
             image = self.random_crop(image=image)['image']
 
-        # (3) apply the color augmentation transformations
+        # (4) apply the color augmentation transformations
         image = self.color_transforms(image=image)['image']
 
         # change order of dimensions to be (channels, rows, columns),  
@@ -276,6 +310,92 @@ class TrainingDataset(torch.utils.data.Dataset):
 
         return padding, center_crop_coords
 
+    def superimpose_pen_marking(self, image: np.ndarray) -> np.ndarray:
+        """
+        Read a pen marking image, augment it, and superimpose it on the image.
+
+        Args:
+            image: Image tensor with shape (channels=3, height, width).
+
+        Returns:
+            image:  Image tensor with shape (channels=3, height, width) 
+                and superimposed pen marking.
+        """
+        # check if pen marking augmentation was specified
+        if 'PenMarkings' in self.augmentations:
+            config = self.augmentations['PenMarkings']
+            # check if the probability is larger than zero
+            if not (0.0 <= config['p'] <= 1.0):
+                raise ValueError('The probability p must be between 0.0 and 1.0.')
+            # check if there are any pen marking images available
+            if not len(self.pen_image_paths):
+                return image
+        else:
+            return image
+        
+        # determine if pen marking augmentation should be applied
+        if random.random() > config['p']:
+            return image
+        
+        # repeat loading and superimposing pen markings on the image N times
+        if isinstance(config['N'], (tuple, list)):
+            if len(config['N']) != 2:
+                raise ValueError('Invalid number of items (expected 2).')
+            times = random.randint(*config['N'])
+        elif isinstance(config['N'], int):
+            times = config['N']
+        else:
+            raise ValueError('The number of pen markings N must be a single '
+                             'integer or a 2-tuple with the minimum and maximum '
+                             'amount for random sampling.')
+        for _ in range(times):
+            # load pen marking image
+            pen_image = self.pen_images[random.randint(0, len(self.pen_images)-1)]
+
+            # add padding to make the pen marking image square
+            pen_height, pen_width, _ = pen_image.shape
+            diff = pen_height-pen_width
+            if diff > 0:
+                pen_image = np.pad(
+                    array=pen_image, 
+                    pad_width=((0,0), (int(diff/2), ceil(diff/2)), (0,0)), 
+                    constant_values=255,
+                )
+                pen_width = pen_height
+            elif diff < 0:
+                pen_image = np.pad(
+                    array=pen_image, 
+                    pad_width=((int(abs(diff)/2), ceil(abs(diff)/2)), (0,0), (0,0)), 
+                    constant_values=255,
+                )
+                pen_height = pen_width
+
+            # apply augmentations to pen marking image
+            pen_image = self.pen_transforms(image=pen_image)['image']
+
+            # determine a random position
+            height, width, _ = image.shape
+            y = random.randint(0, height-1)
+            x = random.randint(0, width-1)
+
+            # determine the coordinates
+            min_y = max(y-int(pen_height/2), 0)
+            max_y = min(y+ceil(pen_height/2), height)
+            min_x = max(x-int(pen_width/2), 0)
+            max_x = min(x+ceil(pen_width/2), width)
+
+            diff_y = pen_height-(max_y-min_y)
+            diff_x = pen_width-(max_x-min_x)
+
+            # multiply the image with the pen marking
+            image[min_y:max_y, min_x:max_x, :] = (
+                pen_image[int(diff_y/2):pen_height-ceil(diff_y/2), 
+                        int(diff_x/2):pen_width-ceil(diff_x/2), :] / 255
+                * image[min_y:max_y, min_x:max_x, :]
+            )
+
+        return image
+    
     def get_aug_transforms(self) -> dict[str, dict]:
         """
         Parses specified augmentation settings and configures augmentation transforms.
@@ -290,7 +410,7 @@ class TrainingDataset(torch.utils.data.Dataset):
             },
             'color': {
                 'all': [],
-            }
+            },
         }
         # initialize transforms if specified
         if 'RandomRotate90' in self.augmentations:
@@ -357,6 +477,7 @@ class TrainingDataset(torch.utils.data.Dataset):
                     **self.augmentations['JPEGCompression'],
                 )
             )  
+
         return transforms
 
 
@@ -417,6 +538,7 @@ class SupervisedTrainingDataset(TrainingDataset):
     def __init__(
         self, 
         df: pd.core.frame.DataFrame,
+        df_pen: Optional[pd.core.frame.DataFrame] = None,
         length: Optional[int] = None,
         shape: Optional[tuple[int, int]] = None,
         max_shape: Optional[tuple[int, int]] = None,
@@ -430,6 +552,7 @@ class SupervisedTrainingDataset(TrainingDataset):
 
         Args:
             df:  Dataframe with dataset info.
+            df_pen:  Dataframe with pen marking dataset information.
             length:  Number of items in the dataset (can be set arbitrarily for
                 training without specifying epochs).
             shape:  Shape of random crops from images as (width, height).
@@ -440,18 +563,20 @@ class SupervisedTrainingDataset(TrainingDataset):
             return_N_cross_sections:  Indicates whether the number of 
                 cross-sections are returned.
         """
-        super().__init__(df, length, shape, max_shape, divisor, augmentations, 
+        super().__init__(df, df_pen, length, shape, max_shape, divisor, augmentations, 
                          return_image_name, return_N_cross_sections)
         
         # retrieve paths to annotations
         self.annotation_paths = list(df['annotation_paths'])
+        self.pen_annotation_paths = [] if df_pen is None else list(df_pen['annotation_paths'])
+        self.pen_annotations = [sitk.GetArrayFromImage(sitk.ReadImage(p)) for p in self.pen_annotation_paths]
 
         # compose augmentation function for specific regions
         self.tissue_color_transforms = A.Compose(
             self.transforms['color']['tissue'],
         )
-        self.pen_background_color_transforms = A.Compose(
-            self.transforms['color']['pen+background'],
+        self.non_tissue_color_transforms = A.Compose(
+            self.transforms['color']['non-tissue'],
         )
         self.pen_color_transforms = A.Compose(
             self.transforms['color']['pen'],
@@ -459,6 +584,7 @@ class SupervisedTrainingDataset(TrainingDataset):
         self.background_color_transforms = A.Compose(
             self.transforms['color']['background'],
         )
+
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         """ 
@@ -487,7 +613,10 @@ class SupervisedTrainingDataset(TrainingDataset):
         annotation = np.transpose(annotation, (1,2,0))
         N_cross_sections = annotation.shape[-1]-2
 
-        # (1) apply the shape altering geometric augmentation transformations
+        # (1) superimpose additional pen markings
+        image, annotation = self.superimpose_pen_marking(image=image, mask=annotation)
+
+        # (2) apply the shape altering geometric augmentation transformations
         transformed = self.shape_altering_transforms(image=image, mask=annotation)
         image = transformed['image']
         annotation = transformed['mask']
@@ -501,7 +630,7 @@ class SupervisedTrainingDataset(TrainingDataset):
             padding_mode['constant_values'] = 0
         annotation = np.pad(annotation, padding, **padding_mode)
 
-        # (2) apply the shape preserving geometric augmentation transformations
+        # (3) apply the shape preserving geometric augmentation transformations
         transformed = self.shape_preserving_transforms(image=image, mask=annotation)
         image = transformed['image']
         annotation = transformed['mask']
@@ -522,25 +651,25 @@ class SupervisedTrainingDataset(TrainingDataset):
         pen_region = np.where(annotation[..., 1:2] > 0, 1, 0)
         background = np.where(np.sum(annotation[..., 0:2], axis=2, keepdims=True) > 0, 0, 1)
 
-        # (3) apply color augmentation transformations to all image regions
+        # (4) apply color augmentation transformations to all image regions
         image = self.color_transforms(image=image)['image']
-        # (4) apply color augmentation transformations to the tissue regions
+        # (5) apply color augmentation transformations to the tissue regions
         transformed = self.tissue_color_transforms(image=image)
         image = (transformed['image']*tissue_region 
                  + image*(1-tissue_region)).astype(np.uint8)
-        # (5) apply color augmentation transformations to the pen and background regions
-        transformed = self.pen_background_color_transforms(image=image)
+        # (6) apply color augmentation transformations to the pen and background regions
+        transformed = self.non_tissue_color_transforms(image=image)
         image = (transformed['image']*(pen_region+background) 
                  + image*(1-(pen_region+background))).astype(np.uint8)
-        # (6) apply color augmentation transformations to the pen marking regions
+        # (7) apply color augmentation transformations to the pen marking regions
         transformed = self.pen_color_transforms(image=image)
         image = (transformed['image']*pen_region 
                  + image*(1-pen_region)).astype(np.uint8)
-        # (7) apply color augmentation transformations to the background regions
+        # (8) apply color augmentation transformations to the background regions
         transformed = self.background_color_transforms(image=image)
         image = (transformed['image']*background 
                  + image*(1-background)).astype(np.uint8)
-
+        
         # change order of dimensions to be (channels, rows, columns) and 
         # convert the image intensities to be in the range of 0.0-1.0    
         image = np.transpose(image, (2,0,1))/255
@@ -571,7 +700,7 @@ class SupervisedTrainingDataset(TrainingDataset):
         transforms = super().get_aug_transforms()
         
         # check settings for region-specific augmentations
-        for region in ['tissue', 'pen+background', 'pen', 'background']:
+        for region in ['tissue', 'pen', 'background', 'non-tissue']:
             transforms['color'][region] = []
             if f'HueSaturationValue {region}' in self.augmentations:
                 transforms['color'][region].append(
@@ -587,6 +716,107 @@ class SupervisedTrainingDataset(TrainingDataset):
                 )  
         
         return transforms
+    
+    def superimpose_pen_marking(self, image: np.ndarray, mask: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Read a pen marking image, augment it, and superimpose it on the image.
+
+        Args:
+            image: Image tensor with shape (channels=3, height, width).
+            mask: Mask tensor with shape (channels, rows, columns).
+
+        Returns:
+            image:  Image tensor with shape (channels=3, height, width) and 
+                superimposed pen markings.
+            mask: Mask tensor with shape (channels, rows, columns)
+                and superimposed pen markings.
+        """
+        # check if pen marking augmentation was specified
+        if 'PenMarkings' in self.augmentations:
+            config = self.augmentations['PenMarkings']
+            # check if the probability is larger than zero
+            if not (0.0 <= config['p'] <= 1.0):
+                raise ValueError('The probability p must be between 0.0 and 1.0.')
+            # check if there are any pen marking images available
+            if not len(self.pen_image_paths):
+                return image, mask
+        else:
+            return image, mask
+        
+        # determine if pen marking augmentation should be applied
+        if random.random() > config['p']:
+            return image, mask
+        
+        # repeat loading and superimposing pen markings on the image N times
+        if isinstance(config['N'], (tuple, list)):
+            if len(config['N']) != 2:
+                raise ValueError('Invalid number of items (expected 2).')
+            times = random.randint(*config['N'])
+        elif isinstance(config['N'], int):
+            times = config['N']
+        else:
+            print(type(config['N']))
+            raise ValueError('The number of pen markings N must be a single '
+                             'integer or a 2-tuple with the minimum and maximum '
+                             'amount for random sampling.')
+
+        # repeat loading and superimposing pen markings on the image N times
+        for _ in range(times):
+            # load pen marking image and annotation
+            index = random.randint(0, len(self.pen_image_paths)-1)
+            pen_image = self.pen_images[index]
+            pen_annotation = self.pen_annotations[index]
+
+            # get the height, width, and the distance between them
+            pen_height, pen_width, _ = pen_image.shape
+            diff = pen_height-pen_width
+
+            # add padding to make the pen marking image square            
+            if diff != 0:
+                if diff > 0:
+                    padding = ((0,0), (int(diff/2), ceil(diff/2)), (0,0))
+                    pen_width = pen_height
+                elif diff < 0:
+                    padding = ((int(abs(diff)/2), ceil(abs(diff)/2)), (0,0), (0,0))
+                    pen_height = pen_width
+            
+                pen_image = np.pad(pen_image, padding, constant_values=255)
+                pen_annotation = np.pad(pen_annotation, padding[:2], constant_values=0)
+                               
+            # apply augmentations to pen marking image and annotation
+            transformed = self.pen_transforms(image=pen_image, mask=pen_annotation)
+            pen_image = transformed['image']
+            pen_annotation = transformed['mask']
+
+            # determine a random position
+            height, width, _ = image.shape
+            y = random.randint(0, height-1)
+            x = random.randint(0, width-1)
+
+            # determine the coordinates
+            min_y = max(y-int(pen_height/2), 0)
+            max_y = min(y+ceil(pen_height/2), height)
+            min_x = max(x-int(pen_width/2), 0)
+            max_x = min(x+ceil(pen_width/2), width)
+
+            diff_y = pen_height-(max_y-min_y)
+            diff_x = pen_width-(max_x-min_x)
+
+            # multiply the image with the pen marking
+            image[min_y:max_y, min_x:max_x, :] = (
+                pen_image[int(diff_y/2):pen_height-ceil(diff_y/2), 
+                          int(diff_x/2):pen_width-ceil(diff_x/2), :] 
+                / 255 * image[min_y:max_y, min_x:max_x, :]
+            )
+            # combine the pen marking annotation with the existing mask 
+            mask[min_y:max_y, min_x:max_x, 1] = np.where(
+                ((pen_annotation[int(diff_y/2):pen_height-ceil(diff_y/2), 
+                                 int(diff_x/2):pen_width-ceil(diff_x/2)] /255)
+                + (mask[min_y:max_y, min_x:max_x, 1]/255)) > 0, 255, 0,
+            )
+                 
+        return image, mask
 
 
 class InferenceDataset(torch.utils.data.Dataset):
