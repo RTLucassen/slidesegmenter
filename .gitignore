@@ -5,6 +5,3 @@ __pycache__
 *.egg-info
 
 other
-
-00_data_selection.py
-08_inference.py
