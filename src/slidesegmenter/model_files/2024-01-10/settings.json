@@ -1,0 +1,180 @@
+{
+    "experiment_name": "Modified_U-Net_2024-01-10_13h41m39s",
+    "dataset_filename": "dataset.xlsx",
+    "seed": 64,
+    "model_name": "ModifiedUNet",
+    "compile_model": false,
+    "checkpoint_path": null,
+    "model": {
+        "input_channels": 3,
+        "filters": 32,
+        "downsample_factors": [
+            2,
+            4,
+            4,
+            4,
+            4
+        ],
+        "residual_connection": false
+    },
+    "training": {
+        "learning_rate": 0.0003,
+        "iterations": 100000,
+        "iterations_per_decay": 20000,
+        "decay_factor": 0.5,
+        "iterations_per_checkpoint": 500,
+        "iterations_per_update": 5,
+        "loss": {
+            "weights": [
+                1,
+                10,
+                1,
+                1
+            ],
+            "class_weights": [
+                1,
+                1
+            ],
+            "fp_weight": 0.5,
+            "fn_weight": 0.5,
+            "gamma": 0
+        }
+    },
+    "dataloader": {
+        "num_workers": 4,
+        "pin_memory": true,
+        "batch_size": 1,
+        "image_shape": null,
+        "max_image_shape": [
+            3072,
+            3072
+        ]
+    },
+    "augmentation": {
+        "RandomRotate90": {
+            "p": 0.25
+        },
+        "Affine": {
+            "p": 0.5,
+            "translate_px": {
+                "x": [
+                    -256,
+                    256
+                ],
+                "y": [
+                    -256,
+                    256
+                ]
+            },
+            "scale": [
+                0.95,
+                1.05
+            ],
+            "rotate": [
+                -180,
+                180
+            ]
+        },
+        "HorizontalFlip": {
+            "p": 0.5
+        },
+        "VerticalFlip": {
+            "p": 0.5
+        },
+        "HueSaturationValue": {
+            "p": 0.5,
+            "hue_shift_limit": 25,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0
+        },
+        "HueSaturationValue pen": {
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0
+        },
+        "HueSaturationValue tissue": {
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0
+        },
+        "HueSaturationValue non-tissue": {
+            "p": 0.0,
+            "hue_shift_limit": 0,
+            "sat_shift_limit": 0,
+            "val_shift_limit": 0
+        },
+        "HueSaturationValue background": {
+            "p": 0.25,
+            "hue_shift_limit": 10,
+            "sat_shift_limit": 5,
+            "val_shift_limit": 0
+        },
+        "RandomBrightnessContrast": {
+            "p": 0.25,
+            "brightness_limit": 0.2,
+            "contrast_limit": 0.2
+        },
+        "RandomGamma": {
+            "p": 0.25,
+            "gamma_limit": [
+                67,
+                150
+            ]
+        },
+        "GaussNoise": {
+            "p": 0.2,
+            "var_limit": [
+                0,
+                25
+            ]
+        },
+        "GaussianBlur": {
+            "p": 0.2,
+            "sigma_limit": [
+                1e-05,
+                2
+            ]
+        },
+        "JPEGCompression": {
+            "p": 0.2,
+            "quality_limit": [
+                25,
+                100
+            ]
+        },
+        "Padding": [
+            {
+                "mode": "reflect",
+                "p": 0.9
+            },
+            {
+                "mode": "constant",
+                "p": 0.0,
+                "value": 0
+            },
+            {
+                "mode": "constant",
+                "p": 0.1,
+                "value": 255
+            }
+        ],
+        "PenMarkings": {
+            "p": 0.6,
+            "N": 10,
+            "break_if_not_triggered": true
+        }
+    },
+    "hyperparameters": {
+        "tissue_threshold": 0.5,
+        "pen_marking_threshold": 0.5,
+        "pixels_per_bin": 20,
+        "sigma": 2,
+        "filter_size": 15,
+        "percentile": 98,
+        "padding_mode": "constant",
+        "padding_value": 1,
+        "distance_factor": 100
+    }
+}
