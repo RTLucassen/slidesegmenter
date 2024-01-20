@@ -130,10 +130,13 @@ if __name__ == '__main__':
         boxes = get_bounding_boxes(mask[..., 0], joining_sigma)
         for i, (min_y, min_x, max_y, max_x) in enumerate(boxes):
             pen_size = np.sum(corrected_pen_marking[min_y:max_y, min_x:max_x])
+            # skip if no pen marking
+            if pen_size == 0.0:
+                continue
             mean_pen_intensity = (
                 np.sum(corrected_pen_marking[min_y:max_y, min_x:max_x, None]
                 * pen_marking_image[min_y:max_y, min_x:max_x])
-                / (pen_size*3)+1e-5
+                / (pen_size*3)
             )          
             # skip if the pen marking is too small            
             if pen_size < size_threshold:

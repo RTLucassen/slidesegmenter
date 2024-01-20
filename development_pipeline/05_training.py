@@ -470,7 +470,7 @@ if __name__ == '__main__':
 
         # --------------- VALIDATION ------------------
         # periodically evaluate on the validation set
-        if index % settings.training['iterations_per_checkpoint'] == 0:
+        if len(df_val) and (index % settings.training['iterations_per_checkpoint'] == 0):
 
             # set the model in evaluation mode
             model.eval()
