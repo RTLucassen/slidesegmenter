@@ -470,45 +470,57 @@ if __name__ == '__main__':
 
         # --------------- VALIDATION ------------------
         # periodically evaluate on the validation set
-        if len(df_val) and (index % settings.training['iterations_per_checkpoint'] == 0):
+        if (index % settings.training['iterations_per_checkpoint'] == 0):
+            if len(df_val):
+                # set the model in evaluation mode
+                model.eval()
 
-            # set the model in evaluation mode
-            model.eval()
+                losses_per_image = {name: [] for name in loss_function.names+['sum']}
+                # deactivate autograd engine (backpropagation not required here)
+                with torch.no_grad():
+                    for X, y in val_dataloader:
 
-            losses_per_image = {name: [] for name in loss_function.names+['sum']}
-            # deactivate autograd engine (backpropagation not required here)
-            with torch.no_grad():
-                for X, y in val_dataloader:
+                        # bring the data to the correct device
+                        X = X.to(device)
+                        y = y.to(device)
+                        y_pred = model(X)
 
-                    # bring the data to the correct device
-                    X = X.to(device)
-                    y = y.to(device)
-                    y_pred = model(X)
+                        # for debugging purposes
+                        if False: rgb_image_viewer(X.cpu())
+                        if False: image_viewer(y_pred.cpu(), vmin=-1, vmax=1)
+                        if False: image_viewer(y.cpu(), vmin=-1, vmax=1)
 
-                    # for debugging purposes
-                    if False: rgb_image_viewer(X.cpu())
-                    if False: image_viewer(y_pred.cpu(), vmin=-1, vmax=1)
-                    if False: image_viewer(y.cpu(), vmin=-1, vmax=1)
+                        # calculate loss
+                        losses = loss_function(y_pred, y)
+                        for name in losses:
+                            losses_per_image[name].append(losses[name].item())
+                        losses_per_image['sum'].append(sum(losses.values()).item())
 
-                    # calculate loss
-                    losses = loss_function(y_pred, y)
-                    for name in losses:
-                        losses_per_image[name].append(losses[name].item())
-                    losses_per_image['sum'].append(sum(losses.values()).item())
+                # calculate the average loss over all images in the validation set
+                for name in losses_per_image:
+                    validation_losses[name].append(
+                        sum(losses_per_image[name])/len(losses_per_image[name]),
+                    )  
 
-            # calculate the average loss over all images in the validation set
-            for name in losses_per_image:
-                validation_losses[name].append(
-                    sum(losses_per_image[name])/len(losses_per_image[name]),
-                )  
+                # log values of validation loss components and combined
+                message = f'Iteration {str(index).zfill(4)}:   Validation loss:  '
+                for name in losses_per_image:
+                    value = validation_losses[name][-1]
+                    message += f'[{name}]: {value:0.3f},   '
+                validation_losses['index'].append(index)
+                logger.info(message+'\n ')
 
-            # log values of validation loss components and combined
-            message = f'Iteration {str(index).zfill(4)}:   Validation loss:  '
-            for name in losses_per_image:
-                value = validation_losses[name][-1]
-                message += f'[{name}]: {value:0.3f},   '
-            validation_losses['index'].append(index)
-            logger.info(message+'\n ')
+                # save training and validation loss as excel file
+                train_loss_df = pd.DataFrame.from_dict(update_losses)
+                val_loss_df = pd.DataFrame.from_dict(validation_losses)
+
+                # create a excel writer object
+                with pd.ExcelWriter(output_folder / 'loss.xlsx') as writer:
+                    train_loss_df.to_excel(writer, sheet_name='Training', index=False)
+                    val_loss_df.to_excel(writer, sheet_name="Validation", index=False)
+
+                # set the model to training mode
+                model.train()
 
             # save model checkpoint
             torch.save({
@@ -519,18 +531,6 @@ if __name__ == '__main__':
                 },
                 output_folder / f'checkpoint_I{str(index).zfill(4)}.tar',
             )
-
-            # save training and validation loss as excel file
-            train_loss_df = pd.DataFrame.from_dict(update_losses)
-            val_loss_df = pd.DataFrame.from_dict(validation_losses)
-
-            # create a excel writer object
-            with pd.ExcelWriter(output_folder / 'loss.xlsx') as writer:
-                train_loss_df.to_excel(writer, sheet_name='Training', index=False)
-                val_loss_df.to_excel(writer, sheet_name="Validation", index=False)
-
-            # set the model to training mode
-            model.train()
 
     # plot training and validation loss
     fig, ax = plt.subplots()
