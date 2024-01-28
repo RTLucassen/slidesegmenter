@@ -46,7 +46,7 @@ class SlideSegmenter:
         channels_last: bool = True,
         tissue_segmentation: bool = True,
         pen_marking_segmentation: bool = True,
-        separate_cross_sections: bool = True,
+        separate_cross_sections: bool = False,
         model_folder: str = 'latest',
         device: str = 'cpu', 
     ) -> None:
