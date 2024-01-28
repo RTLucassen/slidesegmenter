@@ -37,7 +37,8 @@ a *SlideSegmenter* instance. By default, the latest version of the model is used
 ## Output
 The output depends on the configuration of the *SlideSegmenter* instance (see cases below).
 At initialization, there is the option to disable: **(1)** tissue segmentation, **(2)** pen marking segmentation, and **(3)** cross-section separation. 
-If any of these are disabled, the corresponding decoders of the model will not be initialized, making inference faster. By default, all are enabled.
+If any of these are disabled, the corresponding decoders of the model will not be initialized, making inference faster. 
+By default, tissue and pen marking segmentation are enabled and cross-section separation is disabled.
 
 <details>
 <summary>
