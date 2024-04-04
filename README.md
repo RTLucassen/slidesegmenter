@@ -103,7 +103,7 @@ pen_markings = segmenter.segment(low_magnification_image)
 ## Citing
 If you found *SlideSegmenter* useful in your research, please consider citing our paper:
 ```
-@inproceedings{10.1117/12.3004683,
+@inproceedings{lucassen2024tissue,
   author = {Ruben T Lucassen and Willeke A M Blokx and Mitko Veta},
   title = {{Tissue cross-section and pen marking segmentation in whole slide images}},
   volume = {12933},
