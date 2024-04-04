@@ -1,7 +1,7 @@
 # SlideSegmenter
 *SlideSegmenter* is a Python 3.9+ package for tissue and pen marking segmentation in low-magnification (1.25x) whole slide images (WSIs). 
 We also developed a custom bitmap [annotation tool](https://github.com/RTLucassen/annotation_tool), which was used in the development of the method. More details can be found in the corresponding paper. 
-[[`SPIE`](https://spie.org/medical-imaging/presentation/Tissue-cross-section-and-pen-marking-segmentation-in-whole-slide/12933-10#_=_)][[`arXiv`](https://arxiv.org/abs/2401.13511)]
+[[`SPIE`](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/12933/129330B/Tissue-cross-section-and-pen-marking-segmentation-in-whole-slide/10.1117/12.3004683.short)][[`arXiv`](https://arxiv.org/abs/2401.13511)]
 
 <div align="center">
   <img width="100%" alt="Method" src=".github\method.png">
@@ -103,10 +103,16 @@ pen_markings = segmenter.segment(low_magnification_image)
 ## Citing
 If you found *SlideSegmenter* useful in your research, please consider citing our paper:
 ```
-@article{lucassen2024tissue,
-  title={Tissue Cross-Section and Pen Marking Segmentation in Whole Slide Images},
-  author={Lucassen, Ruben T and Blokx, Willeke A M and Veta, Mitko},
-  journal={arXiv preprint arXiv:2401.13511},
-  year={2024}
+@inproceedings{10.1117/12.3004683,
+  author = {Ruben T Lucassen and Willeke A M Blokx and Mitko Veta},
+  title = {{Tissue cross-section and pen marking segmentation in whole slide images}},
+  volume = {12933},
+  booktitle = {Medical Imaging 2024: Digital and Computational Pathology},
+  organization = {International Society for Optics and Photonics},
+  publisher = {SPIE},
+  pages = {129330B},
+  year = {2024},
+  doi = {10.1117/12.3004683},
+  URL = {https://doi.org/10.1117/12.3004683}
 }
 ```
