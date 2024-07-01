@@ -1,7 +1,8 @@
 # SlideSegmenter
 *SlideSegmenter* is a Python 3.9+ package for tissue and pen marking segmentation in low-magnification (1.25x) whole slide images (WSIs). 
 We also developed a custom bitmap [annotation tool](https://github.com/RTLucassen/annotation_tool), which was used in the development of the method. More details can be found in the corresponding paper. 
-[[`SPIE`](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/12933/129330B/Tissue-cross-section-and-pen-marking-segmentation-in-whole-slide/10.1117/12.3004683.short)][[`arXiv`](https://arxiv.org/abs/2401.13511)]
+
+[[`SPIE`](https://www.spiedigitallibrary.org/conference-proceedings-of-spie/12933/129330B/Tissue-cross-section-and-pen-marking-segmentation-in-whole-slide/10.1117/12.3004683.short)] [[`arXiv`](https://arxiv.org/abs/2401.13511)]
 
 <div align="center">
   <img width="100%" alt="Method" src=".github\method.png">
