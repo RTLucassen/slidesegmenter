@@ -25,6 +25,7 @@ from typing import Optional, Union
 
 import torch
 import numpy as np
+from huggingface_hub import hf_hub_download
 from scipy.ndimage import gaussian_filter, maximum_filter
 
 from ._model_utils import ModifiedUNet
@@ -41,6 +42,13 @@ class SlideSegmenter:
         separating tissue cross-sections).
     """
     
+    available_models = {
+        '2023-08-13': {'model_filename': 'model_state_dict.pth', 
+                       'settings_filename': 'settings.json'},
+        '2024-01-10': {'model_filename': 'model_state_dict.pth', 
+                       'settings_filename': 'settings.json'},
+    }
+
     def __init__(
         self, 
         channels_last: bool = True,
@@ -85,11 +93,11 @@ class SlideSegmenter:
         
         # load and configure model
         self._load_model()
-
+       
     def _load_model(
         self, 
         model: Optional[torch.nn.Module] = None,
-        model_paths: Optional[Union[Path, str, list, tuple]] = None, 
+        model_path: Optional[Union[Path, str]] = None, 
         settings_path: Optional[Union[Path, str]] = None,
     ) -> None:
         """
@@ -97,12 +105,12 @@ class SlideSegmenter:
         
         Args:
             model:  Model class.
-            model_paths:  Path(s) to (model) state dictionary.
+            model_path:  Path(s) to (model) state dictionary.
             settings_path:  Path to model settings JSON.
         """
         # check whether the combination of input arguments is valid
         if model is not None:
-            if model_paths is None or settings_path is None:
+            if model_path is None or settings_path is None:
                 raise ValueError('If a custom model class is specified, '
                                  'then the model path and setting path '
                                  'must also be specified.')
@@ -111,17 +119,17 @@ class SlideSegmenter:
             # get the latest model folder
             directory = Path(model_files.__file__).parent
             if self.model_folder == 'latest':
-                excluded_folders = ['__init__.py', '__pycache__']
-                self.model_folder = sorted([
-                    f for f in os.listdir(directory) if f not in excluded_folders
-                ])[-1]
-            if model_paths is None:
-                model_paths = []
-                for path in (directory / self.model_folder).iterdir():
-                    if path.suffix == '.pth':
-                        model_paths.append(path)
-            if settings_path is None:
-                settings_path = directory / self.model_folder / 'settings.json'
+                self.model_folder = sorted(list(self.available_models.keys()))[-1]
+            # download the model if necessary
+            if self.model_folder not in os.listdir(directory):
+                print((f'Start downloading the "{self.model_folder}"'
+                       ' model parameters and configuration settings'))
+                self._download_model(self.model_folder, directory)
+            # define the model path and settings path
+            model_filename = self.available_models[self.model_folder]['model_filename']
+            model_path = directory / self.model_folder / model_filename
+            settings_filename = self.available_models[self.model_folder]['settings_filename']
+            settings_path = directory / self.model_folder / settings_filename
 
         # load model settings
         with open(settings_path, 'r') as f:
@@ -130,22 +138,15 @@ class SlideSegmenter:
         # store hyperparameters
         if 'hyperparameters' in settings:
             self.hyperparameters = settings['hyperparameters']
-
-        # if a single path was provided, add to a list
-        if isinstance(model_paths, (str, Path)):
-            model_paths = [model_paths]
         
-        # combine the model parameters from one or more model state dictionaries 
-        model_state_dict = {}
-        for model_path in model_paths:
-            dictionary = torch.load(
-                model_path, 
-                map_location=torch.device(self.device),
-            )
-            # check if 'model_state_dict' is one of the keys
-            if 'model_state_dict' in dictionary:
-                dictionary = dictionary['model_state_dict']
-            model_state_dict = {**model_state_dict, **dictionary}
+        # load the model parameters
+        model_state_dict = torch.load(
+            model_path, 
+            map_location=torch.device(self.device),
+        )
+        # check if 'model_state_dict' is one of the keys
+        if 'model_state_dict' in model_state_dict:
+            model_state_dict = model_state_dict['model_state_dict']
 
         # configure model
         self.model = model(
@@ -165,6 +166,23 @@ class SlideSegmenter:
 
         # determine by what value the image height and width must be divisible
         self.divisor = np.prod(settings['model']['downsample_factors'])
+
+    def _download_model(
+        self,
+        model_folder: str,
+        local_dir: Union[str, Path],
+    ) -> None:
+        """
+        Download the model parameters and configuration settings from the HuggingFace Hub.
+        """
+        filenames = list(self.available_models[model_folder].values())
+        for filename in filenames:
+            hf_hub_download(
+                repo_id='rtlucassen/slidesegmenter',
+                filename=filename,
+                subfolder=model_folder,
+                local_dir=local_dir
+            )
 
     def change_device(self, device: str) -> None:
         """

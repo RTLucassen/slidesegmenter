@@ -1,7 +1,10 @@
 slidesegmenter_venv
 __pycache__
+.cache
 
 *.sh
 *.egg-info
+*.pth
+*.json
 
 other
