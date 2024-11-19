@@ -120,8 +120,16 @@ class SlideSegmenter:
             directory = Path(model_files.__file__).parent
             if self.model_folder == 'latest':
                 self.model_folder = sorted(list(self.available_models.keys()))[-1]
-            # download the model if necessary
+            # check if the model has to be downloaded
+            downloaded = True
             if self.model_folder not in os.listdir(directory):
+                downloaded = False
+            else:
+                for file in self.available_models[self.model_folder].values():
+                    if file not in os.listdir(directory / self.model_folder):
+                        downloaded = False
+            # download the model if necessary
+            if not downloaded:
                 print((f'Start downloading the "{self.model_folder}"'
                        ' model parameters and configuration settings'))
                 self._download_model(self.model_folder, directory)
@@ -181,7 +189,8 @@ class SlideSegmenter:
                 repo_id='rtlucassen/slidesegmenter',
                 filename=filename,
                 subfolder=model_folder,
-                local_dir=local_dir
+                local_dir=local_dir,
+                force_download=True,
             )
 
     def change_device(self, device: str) -> None:
