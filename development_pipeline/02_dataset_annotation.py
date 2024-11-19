@@ -30,6 +30,7 @@ subfolder = 'dataset'
 rotate_portrait = True
 add_layers = True
 autosave = True
+start_from_back = True
 
 if __name__ == '__main__':
 
@@ -64,6 +65,9 @@ if __name__ == '__main__':
             paths.append((image_path, None))
         else:
             paths.append((image_path, hits[-1]))
+
+    if start_from_back:
+        paths.reverse()
 
     # prepare the annotation tool for annotation
     AnnotationTool(

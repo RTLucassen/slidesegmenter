@@ -50,6 +50,7 @@ subfolders = ['dataset']
 all_cases = 'all_cases.xlsx'
 dataset_sheet = 'dataset.xlsx'
 overwrite = False
+raise_error_missing_info = False
 include_annotations = True
 include_pen_marking_presence = True
 N_val = 20
@@ -127,14 +128,20 @@ if __name__ == '__main__':
 
     # match all images to the corresponding patient pseudo IDs
     cases = {}
+    missing_count = 0
     for i, image_path in enumerate(image_paths):
         # get the first part of the image name
-        case = image_path.name.split('_')[0]
+        case = image_path.name.replace('+','_').split('_')[0]
         row = df_cases[df_cases['case'] == case]
         if len(row) != 1:
-            raise ValueError('Selected number of cases must be 1.')
-        # get the pseudo ID of the corresponding patient
-        pseudo_id = list(row['pseudo_id'])[0]
+            if raise_error_missing_info:
+                raise ValueError('Selected number of cases must be 1.')
+            else:
+                print(f'WARNING: missing patient information for {case}')
+                pseudo_id = f'missing_{missing_count}'
+        else:
+            # get the pseudo ID of the corresponding patient
+            pseudo_id = list(row['pseudo_id'])[0]
 
         # add pseudo ID to dictionary
         if pseudo_id not in cases:

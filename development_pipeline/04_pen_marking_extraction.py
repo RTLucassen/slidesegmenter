@@ -24,6 +24,7 @@ import pandas as pd
 import SimpleITK as sitk
 from scipy import ndimage
 from skimage.filters import gaussian
+from tqdm import tqdm
 
 from config import annotations_folder, images_folder, sheets_folder
 
@@ -68,6 +69,7 @@ border_sigma = 10
 joining_sigma = 10
 size_threshold = 250 # px
 intensity_threshold = 242
+binarization_threshold = 0.25
 
 
 if __name__ == '__main__':
@@ -104,7 +106,7 @@ if __name__ == '__main__':
 
     # select all images from the sets with pen markings present
     df_selection = df[(df['set'].isin(sets)) & (df['pen_marking_present'] == True)]
-    for i, row in df_selection.iterrows():
+    for i, row in tqdm(df_selection.iterrows()):
         # define image and annotation paths
         image_path = images_folder/row['image_paths']
         annotation_path = annotations_folder/row['annotation_paths']
@@ -153,6 +155,7 @@ if __name__ == '__main__':
             # save corresponding crop of pen marking annotation
             pen_annotation_path = pen_annotations_subfolder/f'{annotation_path.stem}_pen_marking_{i}.{output_extension}'
             pen_annotation_crop = corrected_pen_marking[min_y:max_y, min_x:max_x][None, ..., None]
+            pen_annotation_crop = np.where(pen_annotation_crop > binarization_threshold, 1, 0)
             pen_annotation_crop = (pen_annotation_crop*255).astype(np.uint8)
             sitk.WriteImage(sitk.GetImageFromArray(pen_annotation_crop), pen_annotation_path)
             
