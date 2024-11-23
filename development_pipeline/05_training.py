@@ -213,8 +213,8 @@ configuration = {
             },
         ],
         "PenMarkings": {
-            "p": 0.5,
-            "N": (1, 8),
+            "p": 0.25,
+            "N": (2, 8),
         }
     }
 }
@@ -432,19 +432,21 @@ if __name__ == '__main__':
         # bring the data to the correct device
         X = X.to(device)
         y = y.to(device)
-        y_pred = model(X)
 
-        # calculate loss
-        losses = loss_function(y_pred, y)
-        # correct for gradient accumulation and log values of loss components
-        for name in losses:
-            losses[name] = losses[name] / settings.training['iterations_per_update']
-            iteration_losses[name].append(losses[name].item())
-        
-        # perform the backwards pass
-        loss = sum(losses.values())
-        iteration_losses['sum'].append(loss.item())
-        loss.backward()
+        if True:
+            y_pred = model(X)
+
+            # calculate loss
+            losses = loss_function(y_pred, y)
+            # correct for gradient accumulation and log values of loss components
+            for name in losses:
+                losses[name] = losses[name] / settings.training['iterations_per_update']
+                iteration_losses[name].append(losses[name].item())
+            
+            # perform the backwards pass
+            loss = sum(losses.values())
+            iteration_losses['sum'].append(loss.item())
+            loss.backward()
 
         # for debugging purposes
         if False: print(X.shape); print(y.shape)
@@ -552,7 +554,7 @@ if __name__ == '__main__':
     # change axis setup
     plt.xlabel('Iteration')
     ax.set_ylabel('Loss')
-    ax.set_ylim(bottom=0)
+    ax.set_ylim(bottom=0, top=max(validation_losses['sum'])*1.5)
     plt.xlim([-25, update_losses['index'][-1]+25])
     plt.legend()
     plt.savefig(os.path.join(output_folder, 'loss.png'), dpi=300)
