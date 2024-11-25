@@ -297,7 +297,7 @@ class ModifiedUNet(nn.Module):
         self.attach_pen_decoder = attach_pen_decoder
         self.attach_distance_decoder = attach_distance_decoder
 
-        # check if the sepcified combination of attached decoders is valid
+        # check if the specified combination of attached decoders is valid
         if (not (self.attach_tissue_decoder or self.attach_pen_decoder 
             or self.attach_distance_decoder)):
             raise ValueError('Atleast one decoder must be attached.')
@@ -357,7 +357,7 @@ class ModifiedUNet(nn.Module):
         Returns:
             out:  Tensor after operations.
         """
-        outputs = []
+        outputs = {}
 
         # encoder
         x1 = self.layers['block'](x)
@@ -375,7 +375,7 @@ class ModifiedUNet(nn.Module):
             x_tissue = self.layers['up_tissue4'](x2, x_tissue)
             x_tissue = self.layers['up_tissue5'](x1, x_tissue)
             out_tissue = self.layers['final_conv_tissue'](x_tissue)
-            outputs.append(out_tissue)
+            outputs['tissue'] = out_tissue
         
         # pen segmentation decoder
         if self.attach_pen_decoder:
@@ -385,7 +385,7 @@ class ModifiedUNet(nn.Module):
             x_pen = self.layers['up_pen4'](x2, x_pen)
             x_pen = self.layers['up_pen5'](x1, x_pen)
             out_pen = self.layers['final_conv_pen'](x_pen)
-            outputs.append(out_pen)
+            outputs['pen'] = out_pen
         
         # tissue distance map decoder
         if self.attach_distance_decoder:
@@ -395,12 +395,9 @@ class ModifiedUNet(nn.Module):
             x_distance = self.layers['up_distance4'](x2, x_distance)
             x_distance = self.layers['up_distance5'](x1, x_distance)
             out_distance = self.layers['final_conv_distance'](x_distance)
-            outputs.append(torch.sigmoid(out_tissue)*out_distance)
+            outputs['distance'] = torch.sigmoid(out_tissue)*out_distance
         
-        # concatenate outputs along channels dimension
-        out = torch.concat(outputs, dim=1)
-
-        return out
+        return outputs
 
     def initialize_weights(self, layer: torch.nn) -> None:
         """

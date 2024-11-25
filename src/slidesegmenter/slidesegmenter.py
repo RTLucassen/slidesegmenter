@@ -298,29 +298,30 @@ class SlideSegmenter:
         with torch.no_grad():
             prediction = self.model(image[None, ...].to(self.device))
         
-        # independent of the device, bring the prediction to the cpu and remove
-        # the batch dimension
-        prediction = prediction.to('cpu')[0, ...]
+        for output in prediction:
+            # independent of the device, bring the prediction to the cpu and remove
+            # the batch dimension
+            prediction[output] = prediction[output].to('cpu')[0, ...]
 
-        # crop the padding from the prediction and separate the channels
-        top = padding[1][0]
-        left = padding[2][0]
-        prediction = prediction[:, top:top+height, left:left+width]
+            # crop the padding from the prediction and separate the channels
+            top = padding[1][0]
+            left = padding[2][0]
+            prediction[output] = prediction[output][:, top:top+height, left:left+width]
                 
         # separate the channels and apply the final activation functions
         # depending on the select tasks
         if self.tissue_segmentation:
-            tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+            tissue_segmentation = torch.sigmoid(prediction['tissue'][0, ...]).numpy()
             if self.pen_marking_segmentation:
-                pen_marking_segmentation = torch.sigmoid(prediction[1, ...]).numpy()
+                pen_marking_segmentation = torch.sigmoid(prediction['pen'][0, ...]).numpy()
                 if self.separate_cross_sections:
-                    horizontal_distance = prediction[2, ...].numpy()
-                    vertical_distance = prediction[3, ...].numpy()
+                    horizontal_distance = prediction['distance'][0, ...].numpy()
+                    vertical_distance = prediction['distance'][1, ...].numpy()
             elif self.separate_cross_sections:
-                horizontal_distance = prediction[1, ...].numpy()
-                vertical_distance = prediction[2, ...].numpy()
+                horizontal_distance = prediction['distance'][0, ...].numpy()
+                vertical_distance = prediction['distance'][1, ...].numpy()
         elif self.pen_marking_segmentation:
-            pen_marking_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
+            pen_marking_segmentation = torch.sigmoid(prediction['pen'][0, ...]).numpy()
 
         # binarize the segmentations based on the threshold value
         if tissue_threshold == 'default':

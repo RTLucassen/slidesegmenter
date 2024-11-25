@@ -97,6 +97,9 @@ configuration = {
         "filters": 32,
         "downsample_factors": [2, 4, 4, 4, 4],
         "residual_connection": False,
+        "attach_tissue_decoder": True,
+        "attach_pen_decoder": True,
+        "attach_distance_decoder": True,
     },
 
     # specify training hyperparameters
@@ -224,6 +227,16 @@ experiment_folder = configuration['experiment_name']
 
 if __name__ == '__main__':
 
+    # check if the decoder configurations are valid
+    if not (configuration['model']['attach_tissue_decoder']
+            or configuration['model']['attach_pen_decoder']
+            or configuration['model']['attach_distance_decoder']):
+        raise ValueError('Atleast one decoder must be attached.')
+    if (configuration['model']['attach_distance_decoder'] 
+        and not configuration['model']['attach_tissue_decoder']):
+        raise ValueError('The tissue segmentation decoder must be attached'
+                         'if the distance map decoder is attached.')  
+        
     # create a folder to store the model and settings after training
     output_folder = models_folder / experiment_folder
     if output_folder.exists():
@@ -451,7 +464,9 @@ if __name__ == '__main__':
         # for debugging purposes
         if False: print(X.shape); print(y.shape)
         if False: rgb_image_viewer(X.cpu().detach())
-        if False: image_viewer(y_pred.cpu().detach(), vmin=-1, vmax=1)
+        if False: image_viewer(
+            torch.concat([out.cpu().detach() for out in y_pred.values()], dim=1),
+            vmin=-1, vmax=1)
         if False: image_viewer(y.cpu().detach(), vmin=-1, vmax=1)
 
         if index % settings.training['iterations_per_update'] == 0:
