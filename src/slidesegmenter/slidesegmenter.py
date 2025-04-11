@@ -57,8 +57,9 @@ class SlideSegmenter:
         tissue_segmentation: bool = True,
         pen_marking_segmentation: bool = True,
         separate_cross_sections: bool = False,
-        model_folder: str = 'latest',
         device: str = 'cpu', 
+        model_folder: str = 'latest',
+        alternative_directory: Optional[Union[str, Path]] = None,
     ) -> None:
         """
         Initialize SlideSegmenter instance.
@@ -71,17 +72,20 @@ class SlideSegmenter:
             pen_marking_segmentation:  Indicates whether pen markings are segmented.
             separate_cross_sections:  Indicates whether the segmented tissue 
                 cross-sections are separated. 
-            model:  Name of model subfolder in model_files folder of the package
-                ('latest' selects the latest model).
             device:  Specifies whether model inference is performed on the cpu or gpu.
+            model_folder:  Name of model subfolder in model_files folder of the package
+                ('latest' selects the latest model).
+            alternative_directory:  Optionally define an alternative directory
+                to store the downloaded model files.
         """
         # create instance attributes
         self.channels_last = channels_last
         self.tissue_segmentation = tissue_segmentation
         self.pen_marking_segmentation = pen_marking_segmentation
         self.separate_cross_sections = separate_cross_sections
-        self.model_folder = model_folder
         self.device = device
+        self.model_folder = model_folder
+        self.alternative_directory = alternative_directory
         self.model = None
         self.divisor = None
         self.hyperparameters = {}
@@ -113,7 +117,11 @@ class SlideSegmenter:
         # check whether the combination of input arguments is valid
         if model is None and model_path is None and settings_path is None:
             # get the latest model folder
-            directory = Path(model_files.__file__).parent
+            if self.alternative_directory is not None:
+                directory = self.alternative_directory
+            else:
+                directory = Path(model_files.__file__).parent
+            # select the latest model
             if self.model_folder == 'latest':
                 self.model_folder = sorted(list(self.available_models.keys()))[-1]
             # check if the model has to be downloaded
