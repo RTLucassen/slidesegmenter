@@ -25,19 +25,20 @@ from slidesegmenter import SlideSegmenter
 segmenter = SlideSegmenter(device='cpu', model_folder='latest')
 
 # segment the tissue and pen markings
-cross_sections, pen_markings = segmenter.segment(low_magnification_image)
+segmentation = segmenter.segment(low_magnification_image)
 ```
 
 ## Versions
 Multiple versions of the model are available, which can be selected by specifying 
 the name of the model folder name (see options below) as argument when initializing
 a *SlideSegmenter* instance. By default, the latest version of the model is used.
+- `'2025-03-10'`: Model after the corresponding paper, trained on 840 WSIs of H&E stained skin biopsies and excisions. In comparison to the previous model version, 700 additional challenging WSIs were included. Annotations for these WSIs were obtained by manually correcting the segmentation predictions of the previous model version.
 - `'2024-01-10'`: Model from the corresponding paper, trained on 140 WSIs of H&E stained skin biopsies and excisions.
 - `'2023-08-13'`: Model from a prior version of the corresponding paper, trained on 100 WSIs of H&E stained skin biopsies and excisions.
 
-## Output
-The output depends on the configuration of the *SlideSegmenter* instance (see cases below).
-At initialization, there is the option to disable: **(1)** tissue segmentation, **(2)** pen marking segmentation, and **(3)** cross-section separation. 
+## Configuration and Output
+The output depends on the configuration of the *SlideSegmenter* instance.
+At initialization, there is the option to enable or disable: **(1)** tissue segmentation, **(2)** pen marking segmentation, and **(3)** cross-section separation. 
 If any of these are disabled, the corresponding decoders of the model will not be initialized, making inference faster. 
 By default, tissue and pen marking segmentation are enabled and cross-section separation is disabled.
 
@@ -48,56 +49,92 @@ By default, tissue and pen marking segmentation are enabled and cross-section se
   
 ```python
 segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=True, separate_cross_sections=True)
-cross_sections, pen_markings = segmenter.segment(low_magnification_image)
-# cross_sections: [H, W, S], pen_markings: [H, W, 1], where H = image height, W = image width, S = number of cross-sections
+segmentation = segmenter.segment(low_magnification_image)
+# H = image height, W = image width, S = number of cross-sections
+cross_sections = segmentation['tissue'] # [H, W, S]
+pen_markings = segmentation['pen']      # [H, W, 1]
 ```
 </details>
 
 <details>
 <summary>
-<b>Case 2. Cross-section separation disabled</b>
+<b>Case 2. All enabled (+ return distance maps)</b>
+</summary>
+  
+```python
+segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=True, separate_cross_sections=True)
+segmentation = segmenter.segment(low_magnification_image, return_distance_maps=True)
+# H = image height, W = image width, S = number of cross-sections
+cross_sections = segmentation['tissue']  # [H, W, S]
+pen_markings = segmentation['pen']       # [H, W, 1]
+distance_maps = segmentation['distance'] # [H, W, 2]
+```
+</details>
+
+<details>
+<summary>
+<b>Case 3. Cross-section separation disabled</b>
 </summary>
   
 ```python
 segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=True, separate_cross_sections=False)
-tissue, pen_markings = segmenter.segment(low_magnification_image)
-# tissue: [H, W, 1], pen_markings: [H, W, 1], where H = image height, W = image width
+segmentation = segmenter.segment(low_magnification_image)
+# H = image height, W = image width
+tissue = segmentation['tissue']    # [H, W, 1]
+pen_markings = segmentation['pen'] # [H, W, 1]
 ```
 </details>
 
 <details>
 <summary>
-<b>Case 3. Pen marking segmentation disabled</b>
+<b>Case 4. Pen marking segmentation disabled</b>
 </summary>
   
 ```python
 segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=False, separate_cross_sections=True)
-cross_sections = segmenter.segment(low_magnification_image)
-# cross_sections: [H, W, S], where H = image height, W = image width, S = number of cross-sections
+segmentation = segmenter.segment(low_magnification_image)
+# H = image height, W = image width, S = number of cross-sections
+cross_sections = segmentation['tissue'] # [H, W, S]
 ```
 </details>
 
 <details>
 <summary>
-<b>Case 4. Cross-section separation and pen marking segmentation disabled</b>
+<b>Case 5. Pen marking segmentation disabled (+ return distance maps)</b>
+</summary>
+  
+```python
+segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=False, separate_cross_sections=True)
+segmentation = segmenter.segment(low_magnification_image, return_distance_maps=True)
+# H = image height, W = image width, S = number of cross-sections
+cross_sections = segmentation['tissue']  # [H, W, S]
+distance_maps = segmentation['distance'] # [H, W, 2]
+```
+</details>
+
+<details>
+<summary>
+<b>Case 6. Cross-section separation and pen marking segmentation disabled</b>
 </summary>
   
 ```python
 segmenter = SlideSegmenter(tissue_segmentation=True, pen_marking_segmentation=False, separate_cross_sections=False)
-tissue = segmenter.segment(low_magnification_image)
-# tissue: [H, W, 1], where H = image height, W = image width
+segmentation = segmenter.segment(low_magnification_image)
+# H = image height, W = image width
+tissue = segmentation['tissue'] # [H, W, 1]
 ```
 </details>
 
 <details>
 <summary>
-<b>Case 5. Tissue segmentation disabled</b>
+<b>Case 7. Tissue segmentation disabled</b>
 </summary>
   
 ```python
 segmenter = SlideSegmenter(tissue_segmentation=False, pen_marking_segmentation=True, separate_cross_sections=False)
-pen_markings = segmenter.segment(low_magnification_image)
-# pen_markings: [H, W, 1], where H = image height, W = image width
+segmentation = segmenter.segment(low_magnification_image)
+# H = image height, W = image width
+pen_markings = segmentation['pen'] # [H, W, 1]
 ```
 </details>
 
