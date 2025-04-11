@@ -85,7 +85,7 @@ class SlideSegmenter:
         self.separate_cross_sections = separate_cross_sections
         self.device = device
         self.model_folder = model_folder
-        self.alternative_directory = alternative_directory
+        self.alternative_directory = Path(alternative_directory)
         self.model = None
         self.divisor = None
         self.hyperparameters = {}
