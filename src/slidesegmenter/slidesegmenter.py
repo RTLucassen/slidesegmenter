@@ -160,7 +160,6 @@ class SlideSegmenter:
             self.hyperparameters = settings['hyperparameters']
         
         # load the model parameters
-        print(model_path)
         model_state_dict = torch.load(
             model_path, 
             map_location=torch.device(self.device),
