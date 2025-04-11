@@ -46,7 +46,7 @@ from tqdm import tqdm
 
 from config import PROJECT_SEED
 from config import annotations_folder, images_folder, models_folder, sheets_folder
-from utils.models import ModifiedUNet
+from utils.models import get_model
 from utils.training_utils import CombinedLoss
 from utils.dataset_utils import seed_worker, SupervisedTrainingDataset
 from utils.visualization_utils import image_viewer, rgb_image_viewer 
@@ -85,7 +85,7 @@ USE_CPU = False
 # specify experiment and dataset settings
 configuration = {
     "experiment_name": f'Modified_U-Net_{datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")}',
-    "dataset_filename": 'dataset.xlsx',
+    "dataset_filename": 'dataset+addition.xlsx',
     "seed": PROJECT_SEED,
     "model_name": "ModifiedUNet",
     "compile_model": False,
@@ -97,6 +97,9 @@ configuration = {
         "filters": 32,
         "downsample_factors": [2, 4, 4, 4, 4],
         "residual_connection": False,
+        "attach_tissue_decoder": True,
+        "attach_pen_decoder": True,
+        "attach_distance_decoder": True,
     },
 
     # specify training hyperparameters
@@ -108,8 +111,16 @@ configuration = {
         "iterations_per_checkpoint": 500,
         "iterations_per_update": 5,
         "loss": {
-            "weights": [1, 10, 1, 1],
-            "class_weights": [1, 1],
+            "loss_weights": {
+                "tversky": 1.0, 
+                "focal": 10.0, 
+                "MSE dist": 1.0, 
+                "MSE grad dist": 1.0,
+            },
+            "class_weights": {
+                "tissue": 1.0,
+                "pen": 1.0
+            },
             "fp_weight": 0.5,
             "fn_weight": 0.5,
             "gamma": 0,
@@ -214,7 +225,7 @@ configuration = {
         ],
         "PenMarkings": {
             "p": 0.25,
-            "N": (2, 8),
+            "N": (2, 6),
         }
     }
 }
@@ -316,11 +327,7 @@ if __name__ == '__main__':
     )
 
     # initialize model
-    if settings.model_name == 'ModifiedUNet':
-        model = ModifiedUNet(**settings.model)
-    else:
-        raise ValueError('Model name was not recognized.')
-
+    model = get_model(settings.model_name)(**settings.model)
     # load checkpoint if specified
     if isinstance(settings.checkpoint_path, str):
         # load the checkpoint model settings
@@ -401,7 +408,7 @@ if __name__ == '__main__':
     optimizer = AdamW(model.parameters(), lr=learning_rate)
     loss_function = CombinedLoss(
         device=device,
-        weights=settings.training['loss']['weights'],
+        loss_weights=settings.training['loss']['loss_weights'],
         class_weights=settings.training['loss']['class_weights'],
         fp_weight=settings.training['loss']['fp_weight'],
         fn_weight=settings.training['loss']['fn_weight'],

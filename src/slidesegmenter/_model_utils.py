@@ -357,7 +357,7 @@ class ModifiedUNet(nn.Module):
         Returns:
             out:  Tensor after operations.
         """
-        outputs = []
+        outputs = {}
 
         # encoder
         x1 = self.layers['block'](x)
@@ -375,7 +375,7 @@ class ModifiedUNet(nn.Module):
             x_tissue = self.layers['up_tissue4'](x2, x_tissue)
             x_tissue = self.layers['up_tissue5'](x1, x_tissue)
             out_tissue = self.layers['final_conv_tissue'](x_tissue)
-            outputs.append(out_tissue)
+            outputs['tissue'] = out_tissue
         
         # pen segmentation decoder
         if self.attach_pen_decoder:
@@ -385,7 +385,7 @@ class ModifiedUNet(nn.Module):
             x_pen = self.layers['up_pen4'](x2, x_pen)
             x_pen = self.layers['up_pen5'](x1, x_pen)
             out_pen = self.layers['final_conv_pen'](x_pen)
-            outputs.append(out_pen)
+            outputs['pen'] = out_pen
         
         # tissue distance map decoder
         if self.attach_distance_decoder:
@@ -395,12 +395,9 @@ class ModifiedUNet(nn.Module):
             x_distance = self.layers['up_distance4'](x2, x_distance)
             x_distance = self.layers['up_distance5'](x1, x_distance)
             out_distance = self.layers['final_conv_distance'](x_distance)
-            outputs.append(torch.sigmoid(out_tissue)*out_distance)
+            outputs['distance'] = torch.sigmoid(out_tissue)*out_distance
         
-        # concatenate outputs along channels dimension
-        out = torch.concat(outputs, dim=1)
-
-        return out
+        return outputs
 
     def initialize_weights(self, layer: torch.nn) -> None:
         """
@@ -449,3 +446,216 @@ class ModifiedUNet(nn.Module):
                 f"of which {trainable_parameters:,} are trainable.\n")
         
         return info
+    
+
+class ModifiedUNet2(nn.Module):
+
+    def __init__(
+        self,
+        input_channels: int,
+        filters: int = 8,
+        activation: str = 'relu',
+        normalization: str = 'instance',
+        downsample_method: str = 'max_pool',
+        downsample_factors: list = [2, 2, 2, 2, 2],
+        upsample_method: str = 'interpolate',
+        residual_connection: bool = False,
+        weight_init: str = 'kaiming_normal',
+        attach_tissue_decoder: bool = True,
+        attach_pen_decoder: bool = True,
+        attach_distance_decoder: bool = True,
+    ) -> None:
+        """
+        Implementation of modified U-Net with a single encoder connected to
+        three decoders for tissue and pen marking segmentation, as well as
+        predicting the distance to the centroid for each tissue cross-section.
+
+        Args:
+            input_channels:  Number of channels of the input tensor.
+            filters:  Number of filters used in the first convolutional layer. 
+                Each consecutive layer in the encoder path uses twice as many filters.
+                Each consecutive layer in the decoder path uses half as many filters.
+            activation:  Activation function to non-linearly transform feature maps.
+            normalization:  Type of normalization layer for feature maps.
+            downsample_method:  Method to downsample feature maps.  
+            downsample_factors:  Factors for downsampling the feature maps.
+            upsample_method:  Method to upsample feature maps.
+            residual_connection:  Indicates whether a residual connection is added.
+            weight_init:  Indicates which weight initialization method should be used.
+            attach_tissue_decoder:  Indicates whether the tissue decoder is attached.
+            attach_pen_decoder:  Indicates whether the pen decoder is attached.
+            attach_distance_decoder:  Indicates whether the distance decoder is attached.
+        """
+        super().__init__()
+
+        # define hyperparameters as instance attributes
+        self.filters = filters
+        self.activation = activation
+        self.normalization = normalization
+        self.downsample_method = downsample_method
+        self.downsample_factors = downsample_factors
+        self.upsample_method = upsample_method
+        self.residual_connection = residual_connection
+        self.weight_init = weight_init
+        self.attach_tissue_decoder = attach_tissue_decoder
+        self.attach_pen_decoder = attach_pen_decoder
+        self.attach_distance_decoder = attach_distance_decoder
+
+        # check if the sepcified combination of attached decoders is valid
+        if (not (self.attach_tissue_decoder or self.attach_pen_decoder 
+            or self.attach_distance_decoder)):
+            raise ValueError('Atleast one decoder must be attached.')
+        if self.attach_distance_decoder and not self.attach_tissue_decoder:
+            raise ValueError('The tissue segmentation decoder must be attached'
+                             'if the distance map decoder is attached.')
+
+        # define the network layers
+        layers = {
+            'block':    Block(input_channels, int(self.filters), self.activation, self.normalization, self.residual_connection),
+            'down1':    Down(int(  1 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.downsample_method, self.residual_connection),
+            'down2':    Down(int(  2 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.downsample_method, self.residual_connection),
+            'down3':    Down(int(  4 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.downsample_method, self.residual_connection),
+            'down4':    Down(int(  8 * self.filters), int( 16 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.downsample_method, self.residual_connection),
+            'down5':    Down(int( 16 * self.filters), int( 16 * self.filters), self.activation, None,               self.downsample_factors[4], self.downsample_method, self.residual_connection),
+        }
+        if self.attach_tissue_decoder:
+            layers = {
+                **layers,
+                'up_tissue1':  Up(  int( 16 * self.filters), int( 16 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method, self.residual_connection),
+                'up_tissue2':  Up(  int(  8 * self.filters), int(  8 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method, self.residual_connection),
+                'up_tissue3':  Up(  int(  4 * self.filters), int(  4 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method, self.residual_connection),
+                'up_tissue4':  Up(  int(  2 * self.filters), int(  2 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method, self.residual_connection),
+                'up_tissue5':  Up(  int(  1 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method, self.residual_connection),
+                'final_conv_tissue': nn.Conv2d(self.filters, 1, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
+            }
+        if self.attach_pen_decoder:
+            layers = {
+                **layers,
+                'up_pen1': Up(  int( 16 * self.filters), int( 16 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method, self.residual_connection),
+                'up_pen2': Up(  int(  8 * self.filters), int(  8 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method, self.residual_connection),
+                'up_pen3': Up(  int(  4 * self.filters), int(  4 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method, self.residual_connection),
+                'up_pen4': Up(  int(  2 * self.filters), int(  2 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method, self.residual_connection),
+                'up_pen5': Up(  int(  1 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method, self.residual_connection),
+                'final_conv_pen': nn.Conv2d(self.filters, 1, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
+            }
+        if self.attach_distance_decoder:
+            layers = {
+                **layers,
+                'up_distance1':  Up(  int( 16 * self.filters), int( 16 * self.filters), int(  8 * self.filters), self.activation, self.normalization, self.downsample_factors[4], self.upsample_method, self.residual_connection),
+                'up_distance2':  Up(  int(  8 * self.filters), int(  8 * self.filters), int(  4 * self.filters), self.activation, self.normalization, self.downsample_factors[3], self.upsample_method, self.residual_connection),
+                'up_distance3':  Up(  int(  4 * self.filters), int(  4 * self.filters), int(  2 * self.filters), self.activation, self.normalization, self.downsample_factors[2], self.upsample_method, self.residual_connection),
+                'up_distance4':  Up(  int(  2 * self.filters), int(  2 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[1], self.upsample_method, self.residual_connection),
+                'up_distance5':  Up(  int(  1 * self.filters), int(  1 * self.filters), int(  1 * self.filters), self.activation, self.normalization, self.downsample_factors[0], self.upsample_method, self.residual_connection),
+                'final_conv_distance': nn.Conv2d(self.filters, 2, kernel_size=3, padding=1, padding_mode='zeros', stride=1),
+            }
+        self.layers = nn.ModuleDict(layers)
+        # recursively apply the initialize_weights method 
+        # to all convolutional layers to initialize weights
+        self.layers.apply(self.initialize_weights)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x:  Input tensor.
+        
+        Returns:
+            out:  Tensor after operations.
+        """
+        outputs = {}
+
+        # encoder
+        x1 = self.layers['block'](x)
+        x2 = self.layers['down1'](x1)
+        x3 = self.layers['down2'](x2)
+        x4 = self.layers['down3'](x3)
+        x5 = self.layers['down4'](x4)
+        x = self.layers['down5'](x5)
+        
+        # tissue segmentation and distance map decoder
+        if self.attach_tissue_decoder:
+            x_tissue = self.layers['up_tissue1'](x5, x)
+            x_tissue = self.layers['up_tissue2'](x4, x_tissue)
+            x_tissue = self.layers['up_tissue3'](x3, x_tissue)
+            x_tissue = self.layers['up_tissue4'](x2, x_tissue)
+            x_tissue = self.layers['up_tissue5'](x1, x_tissue)
+            out_tissue = self.layers['final_conv_tissue'](x_tissue)
+            outputs['tissue'] = out_tissue
+        
+        # pen segmentation decoder
+        if self.attach_pen_decoder:
+            x_pen = self.layers['up_pen1'](x5, x)
+            x_pen = self.layers['up_pen2'](x4, x_pen)
+            x_pen = self.layers['up_pen3'](x3, x_pen)
+            x_pen = self.layers['up_pen4'](x2, x_pen)
+            x_pen = self.layers['up_pen5'](x1, x_pen)
+            out_pen = self.layers['final_conv_pen'](x_pen)
+            outputs['pen'] = out_pen
+        
+        # tissue distance map decoder
+        if self.attach_distance_decoder:
+            x_distance = self.layers['up_distance1'](x5, x)
+            x_distance = self.layers['up_distance2'](x4, x_distance)
+            x_distance = self.layers['up_distance3'](x3, x_distance)
+            x_distance = self.layers['up_distance4'](x2, x_distance)
+            x_distance = self.layers['up_distance5'](x1, x_distance)
+            out_distance = self.layers['final_conv_distance'](x_distance)
+            outputs['distance'] = torch.sigmoid(out_tissue)*out_distance
+        
+        return outputs
+
+    def initialize_weights(self, layer: torch.nn) -> None:
+        """
+        Initialize the weights using the specified initialization method
+        if it is a 2D convolutional layer.
+        
+        Args:
+            layer:  Torch network layer.
+        """
+        # define dictionary with initialization function and names
+        init_methods = {
+            'xavier_uniform' : nn.init.xavier_uniform_,
+            'xavier_normal'  : nn.init.xavier_normal_,
+            'kaiming_uniform': lambda x: nn.init.kaiming_uniform_(
+                    x, mode='fan_out', nonlinearity='relu',
+                ),
+            'kaiming_normal' : lambda x: nn.init.kaiming_normal_(
+                    x, mode='fan_out', nonlinearity='relu',
+                ),
+            'zeros' : nn.init.zeros_,
+        }
+
+        if isinstance(layer, nn.Conv2d) == True:
+            # select the specified weight initialization function and initialize 
+            # the layer weights and biases
+            if self.weight_init in init_methods.keys():
+                init_methods[self.weight_init](layer.weight)
+                if layer.bias != None:
+                    nn.init.zeros_(layer.bias)
+            else:
+                raise ValueError('Invalid argument for initialization method.')
+
+    def __repr__(self):
+        """
+        Returns total and trainable number of parameters of the model. 
+        """
+        parameters = 0
+        trainable_parameters = 0
+        # count the total and trainable number of parameters of the model
+        for parameter in self.parameters():
+            parameters += parameter.numel()
+            if parameter.requires_grad:
+                trainable_parameters += parameter.numel()   
+        # create sentence with information about number of parameters
+        info = (f"Total number of parameters is {parameters:,}, " 
+                f"of which {trainable_parameters:,} are trainable.\n")
+        
+        return info
+
+
+def get_model(model_name: str):
+    if model_name == 'ModifiedUNet':
+        return ModifiedUNet
+    elif model_name == 'ModifiedUNet2':
+        return ModifiedUNet2
+    else:
+        raise ValueError('Invalid model name.')

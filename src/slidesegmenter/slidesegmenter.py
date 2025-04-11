@@ -28,7 +28,7 @@ import numpy as np
 from huggingface_hub import hf_hub_download
 from scipy.ndimage import gaussian_filter, maximum_filter
 
-from ._model_utils import ModifiedUNet
+from ._model_utils import get_model
 from . import model_files
 
 
@@ -46,6 +46,8 @@ class SlideSegmenter:
         '2023-08-13': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
         '2024-01-10': {'model_filename': 'model_state_dict.pth', 
+                       'settings_filename': 'settings.json'},
+        '2025-03-10': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
     }
 
@@ -109,13 +111,7 @@ class SlideSegmenter:
             settings_path:  Path to model settings JSON.
         """
         # check whether the combination of input arguments is valid
-        if model is not None:
-            if model_path is None or settings_path is None:
-                raise ValueError('If a custom model class is specified, '
-                                 'then the model path and setting path '
-                                 'must also be specified.')
-        else:
-            model = ModifiedUNet
+        if model is None and model_path is None and settings_path is None:
             # get the latest model folder
             directory = Path(model_files.__file__).parent
             if self.model_folder == 'latest':
@@ -130,24 +126,33 @@ class SlideSegmenter:
                         downloaded = False
             # download the model if necessary
             if not downloaded:
-                print((f'Start downloading the "{self.model_folder}"'
-                       ' model parameters and configuration settings'))
+                print((f'Start downloading the "{self.model_folder}" '
+                        'model parameters and configuration settings'))
                 self._download_model(self.model_folder, directory)
             # define the model path and settings path
             model_filename = self.available_models[self.model_folder]['model_filename']
             model_path = directory / self.model_folder / model_filename
             settings_filename = self.available_models[self.model_folder]['settings_filename']
             settings_path = directory / self.model_folder / settings_filename
+        elif model_path is not None and settings_path is not None:
+            pass
+        else:
+            raise ValueError('Invalid combination of inputs')
 
         # load model settings
         with open(settings_path, 'r') as f:
             settings = json.load(f)
+
+        # select model
+        if model is None:
+            model = get_model(settings['model_name'])
 
         # store hyperparameters
         if 'hyperparameters' in settings:
             self.hyperparameters = settings['hyperparameters']
         
         # load the model parameters
+        print(model_path)
         model_state_dict = torch.load(
             model_path, 
             map_location=torch.device(self.device),
@@ -156,6 +161,15 @@ class SlideSegmenter:
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
 
+        # remove keywords from settings
+        keywords = [
+            'attach_tissue_decoder', 
+            'attach_pen_decoder', 
+            'attach_distance_decoder',
+        ]
+        settings['model'] = {
+            k:v for k, v in settings['model'].items() if k not in keywords
+        }
         # configure model
         self.model = model(
             **settings['model'], 
@@ -230,15 +244,16 @@ class SlideSegmenter:
             return_distance_maps:  Indicates whether the distance maps are returned.
         
         Returns:
-            tissue_segmentation:  Segmentation for whole slide image [0.0-1.0] 
-                (at 1.25x) as (height, width, channel) for channels last or 
-                (channel, height, width) for channels first.
-            pen_marking_segmentation:  Segmentation for whole slide image [0.0-1.0] 
-                (at 1.25x) as (height, width, channel) for channels last or 
-                (channel, height, width) for channels first.
-            distance_maps:  Image with predicted horizontal and vertical distance 
-                with respect to centroid as (height, width, channel) for channels last 
-                or (channel, height, width) for channels first.
+            prediction:  Dictionary with the following key-value pairs:
+                tissue_segmentation:  Segmentation for whole slide image [0.0-1.0] 
+                    (at 1.25x) as (height, width, channel) for channels last or 
+                    (channel, height, width) for channels first.
+                pen_marking_segmentation:  Segmentation for whole slide image [0.0-1.0] 
+                    (at 1.25x) as (height, width, channel) for channels last or 
+                    (channel, height, width) for channels first.
+                distance_maps:  Image with predicted horizontal and vertical distance 
+                    with respect to centroid as (height, width, channel) for channels last 
+                    or (channel, height, width) for channels first.
         """
         # check image object type, convert to numpy array if necessary
         if isinstance(image, torch.Tensor):
@@ -297,76 +312,52 @@ class SlideSegmenter:
         # get the model prediction
         with torch.no_grad():
             prediction = self.model(image[None, ...].to(self.device))
-        
-        # independent of the device, bring the prediction to the cpu and remove
-        # the batch dimension
-        prediction = prediction.to('cpu')[0, ...]
 
-        # crop the padding from the prediction and separate the channels
+        # independent of the device, bring the prediction to the cpu, 
+        # remove the batch dimension, and crop the padding
         top = padding[1][0]
         left = padding[2][0]
-        prediction = prediction[:, top:top+height, left:left+width]
-                
-        # separate the channels and apply the final activation functions
-        # depending on the select tasks
-        if self.tissue_segmentation:
-            tissue_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
-            if self.pen_marking_segmentation:
-                pen_marking_segmentation = torch.sigmoid(prediction[1, ...]).numpy()
-                if self.separate_cross_sections:
-                    horizontal_distance = prediction[2, ...].numpy()
-                    vertical_distance = prediction[3, ...].numpy()
-            elif self.separate_cross_sections:
-                horizontal_distance = prediction[1, ...].numpy()
-                vertical_distance = prediction[2, ...].numpy()
-        elif self.pen_marking_segmentation:
-            pen_marking_segmentation = torch.sigmoid(prediction[0, ...]).numpy()
-
+        prediction = {k:v.to('cpu')[0, :, top:top+height, left:left+width] 
+                      for k, v in prediction.items()}
+        
         # binarize the segmentations based on the threshold value
         if tissue_threshold == 'default':
             tissue_threshold = self.hyperparameters['tissue_threshold']
         if self.tissue_segmentation and tissue_threshold is not None: 
-            tissue_segmentation = np.where(
-                tissue_segmentation >= tissue_threshold, 1, 0)
+            prediction['tissue'] = torch.sigmoid(prediction['tissue'])
+            prediction['tissue'] = torch.where(prediction['tissue'] >= tissue_threshold, 1, 0)
 
         if pen_marking_threshold == 'default':
             pen_marking_threshold = self.hyperparameters['pen_marking_threshold']
         if self.pen_marking_segmentation and pen_marking_threshold is not None:
-            pen_marking_segmentation = np.where(
-                pen_marking_segmentation >= pen_marking_threshold, 1, 0)
+            prediction['pen'] = torch.sigmoid(prediction['pen'])
+            prediction['pen'] = torch.where(prediction['pen'] >= pen_marking_threshold, 1, 0)
+
+        # convert to numpy arrays
+        prediction = {k: v.numpy() for k, v in prediction.items()}
 
         # separate the cross-sections based on the predicted distance maps
         if self.separate_cross_sections:
-            separated_cross_sections, _ = self._separate_cross_sections(
-                tissue_segmentation, 
-                horizontal_distance, 
-                vertical_distance,
-            )
-            tissue_segmentation = separated_cross_sections
-        elif self.tissue_segmentation:
-            tissue_segmentation = tissue_segmentation[..., None]
-        
-        # return the requested output
-        output = []
-        if self.tissue_segmentation:
-            output.append(tissue_segmentation)
-        if self.pen_marking_segmentation:
-            output.append(pen_marking_segmentation[..., None])
-        if return_distance_maps:
-            distance_maps = np.concatenate([horizontal_distance[..., None], 
-                                            vertical_distance[..., None]], 
-                                            axis=-1)
-            output.append(distance_maps)
+            if tissue_threshold is None:
+                raise ValueError('Unable to seperate cross-sections without '
+                                 'binarizing the tissue segmentation.')
+            else:
+                separated_cross_sections, _ = self._separate_cross_sections(
+                    prediction['tissue'][0, ...], 
+                    prediction['distance'][0, ...], 
+                    prediction['distance'][1, ...],
+                )
+                prediction['tissue'] = separated_cross_sections.transpose((2, 0, 1))
+
+        # remove distance maps from prediction if necessary
+        if not return_distance_maps and 'distance' in prediction:
+            del prediction['distance']
 
         # change the last channel to the first channel
-        if not self.channels_last:
-            output = [img.transpose((2, 0, 1)) for img in output]
+        if self.channels_last:
+            prediction = {k: v.transpose((1, 2, 0)) for k, v in prediction.items()}
 
-        # check if one or more files are returned
-        if len(output) == 1:
-            return output[0]
-        else:
-            return tuple(output)
+        return prediction
 
     def _separate_cross_sections(
         self,

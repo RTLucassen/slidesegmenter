@@ -359,8 +359,16 @@ class CombinedLoss(nn.Module):
     def __init__(
         self, 
         device: str, 
-        weights: Optional[list] = None, 
-        class_weights: Optional[list] = None,
+        loss_weights: dict = {
+            'tversky': 1.0, 
+            'focal': 1.0, 
+            'MSE dist': 1.0, 
+            'MSE grad dist': 1.0,
+        }, 
+        class_weights: dict = {
+            'tissue': 1.0, 
+            'pen': 1.0, 
+        }, 
         fp_weight: float = 0.5, 
         fn_weight: float = 0.5, 
         gamma: float = 0.0,
@@ -374,7 +382,7 @@ class CombinedLoss(nn.Module):
 
         Args:
             device:  Torch device specification.    
-            weights:  If not None, compute a weighted average of the losses. 
+            loss_weights:  If not None, compute a weighted average of the losses. 
             class_weights:  If not None, compute a weighted average of the loss
                 for the classes. 
             fp_weight:  Weighting factor for false positives (alpha in paper).
@@ -393,13 +401,13 @@ class CombinedLoss(nn.Module):
         self.names = ['tversky', 'focal', 'MSE dist', 'MSE grad dist']
 
         # initialize weights
-        self.weights = weights if weights is not None else [1, 1, 1, 1]
-        class_weights = class_weights if class_weights is not None else [1]
+        self.loss_weights = loss_weights
+        self.class_weights = class_weights
 
         # initialize loss components
         self.tversky_loss = TverskyLoss(
             sigmoid=True,
-            class_weights=class_weights,
+            class_weights=None,
             fp_weight=fp_weight, 
             fn_weight=fn_weight, 
             smooth_nom=smooth_nom,
@@ -408,7 +416,7 @@ class CombinedLoss(nn.Module):
         self.focal_loss = FocalLoss(
             sigmoid=True,
             gamma=gamma, 
-            class_weights=class_weights,
+            class_weights=None,
         )
         self.MSE_loss = MSELoss()
 
@@ -430,15 +438,32 @@ class CombinedLoss(nn.Module):
             loss:  Combined loss averaged over all images in the batch.
         """
         # calculate the combined loss
-        losses = {
-            'tversky': self.weights[0]*self.tversky_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...]),
-            'focal': self.weights[1]*(self.focal_loss(y_pred[:, 0:2, ...], y_true[:, 0:2, ...])
-                                      + self.focal_loss(-y_pred[:, 0:2, ...], 1-y_true[:, 0:2, ...])),
-            'MSE dist': self.weights[2]*self.MSE_loss(y_pred[:, 2:, ...], y_true[:, 2:, ...]),
-            'MSE grad dist': self.weights[3]*self.MSE_loss(
-                F.conv2d(y_pred[:, 2:, ...], self.grad_kernel), 
-                F.conv2d(y_true[:, 2:, ...], self.grad_kernel),
-            ),
-        }
+        losses = {'tversky': [], 'focal': [], 'MSE dist': [], 'MSE grad dist': []}
+        for decoder, output in y_pred.items():
+            if decoder == 'tissue':
+                losses['tversky'].append(self.tversky_loss(output, y_true[:, 0:1, ...])
+                                         * self.loss_weights['tversky']
+                                         * self.class_weights['tissue'])
+                losses['focal'].append((self.focal_loss(output, y_true[:, 0:1, ...])
+                                        + self.focal_loss(-output, 1-y_true[:, 0:1, ...]))
+                                        * self.loss_weights['focal']
+                                        * self.class_weights['tissue'])
+            elif decoder == 'pen':
+                losses['tversky'].append(self.tversky_loss(output, y_true[:, 1:2, ...])
+                                         * self.loss_weights['tversky']
+                                         * self.class_weights['pen'])
+                losses['focal'].append((self.focal_loss(output, y_true[:, 1:2, ...])
+                                        + self.focal_loss(-output, 1-y_true[:, 1:2, ...]))
+                                        * self.loss_weights['focal']
+                                        * self.class_weights['pen'])
+            elif decoder == 'distance':
+                losses['MSE dist'].append(self.MSE_loss(output, y_true[:, 2:, ...])
+                                          * self.loss_weights['MSE dist']),
+                losses['MSE grad dist'].append(self.MSE_loss(F.conv2d(output, self.grad_kernel), 
+                                                             F.conv2d(y_true[:, 2:, ...], self.grad_kernel),)
+                                               * self.loss_weights['MSE grad dist'])
 
+        losses = {name: sum(loss_values)/len(loss_values) 
+                  for name, loss_values in losses.items() if len(loss_values)}
+        
         return losses

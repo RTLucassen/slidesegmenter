@@ -30,16 +30,14 @@ from config import sheets_folder, models_folder
 from slidesegmenter import SlideSegmenter
 from utils.dataset_utils import SupervisedTrainingDataset
 from utils.evaluation_utils import mean_stdev, dice_score
-from utils.models import ModifiedUNet
 
 
 # define settings
-dataset_sheet = 'dataset.xlsx'
+dataset_sheet = 'dataset+addition_no_test.xlsx'
 sets = ['val']
-model_subfolder = 'Modified_U-Net_2024-01-10_13h41m39s'
+model_subfolder = 'Modified_U-Net_2_no_test_2025-03-10_09h19m43s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I97500.tar'
-device = 'cpu'
+model_checkpoint = 'checkpoint_I64000.tar'
 save_results = True
 save_predictions = True
 
@@ -54,7 +52,7 @@ pen_threshold = None # 0.5
 if __name__ == '__main__':
 
     # define output path
-    output_path = predictions_folder / f'SEG-{"_".join(sets)}-{model_subfolder}-{"&".join(sets)}'
+    output_path = predictions_folder / f'SEG-{model_subfolder}-{"&".join(sets)}'
     if output_path.exists():
         raise FileExistsError('Output directory already exists.')
     else:
@@ -91,7 +89,7 @@ if __name__ == '__main__':
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
     segmenter = SlideSegmenter(channels_last=False, separate_cross_sections=False)
-    segmenter._load_model(ModifiedUNet, checkpoint_path, settings_path)
+    segmenter._load_model(None, checkpoint_path, settings_path)
 
     # initalize dictionary to store results
     results = {}
@@ -111,9 +109,8 @@ if __name__ == '__main__':
 
             # get the model predictions
             predictions = segmenter.segment(image[0, ...], tissue_threshold=None, 
-                                            pen_marking_threshold=None)
-            tissue_prediction, pen_prediction = predictions
-
+                                           pen_marking_threshold=None)
+            
             # loop over all combinations of hyperparameter values in the grid search
             if segmentation_thresholds is not None:
                 for index, threshold in enumerate(segmentation_thresholds):
@@ -122,8 +119,8 @@ if __name__ == '__main__':
                         results[index] = {key: [] for key in keys}
 
                     # binarize the segmentation predictions
-                    binary_tissue_prediction = np.where(tissue_prediction>=threshold, 1, 0)[None, ...]
-                    binary_pen_prediction = np.where(pen_prediction>=threshold, 1, 0)[None, ...]
+                    binary_tissue_prediction = np.where(predictions['tissue']>=threshold, 1, 0)[None, ...]
+                    binary_pen_prediction = np.where(predictions['pen']>=threshold, 1, 0)[None, ...]
              
                     # calculate dice scores
                     tissue_dice = dice_score(
@@ -146,8 +143,8 @@ if __name__ == '__main__':
                     results[index] = {key: [] for key in keys}
 
                 # binarize the segmentation predictions
-                binary_tissue_prediction = np.where(tissue_prediction>=tissue_threshold, 1, 0)[None, ...]
-                binary_pen_prediction = np.where(pen_prediction>=pen_threshold, 1, 0)[None, ...]
+                binary_tissue_prediction = np.where(predictions['tissue']>=tissue_threshold, 1, 0)[None, ...]
+                binary_pen_prediction = np.where(predictions['pen']>=pen_threshold, 1, 0)[None, ...]
    
                 # calculate dice scoresq
                 tissue_dice = dice_score(

@@ -31,22 +31,20 @@ from config import sheets_folder, models_folder
 from slidesegmenter import SlideSegmenter
 from utils.dataset_utils import SupervisedTrainingDataset
 from utils.evaluation_utils import mean_stdev
-from utils.models import ModifiedUNet
 
 
 # define settings
-dataset_sheet = 'dataset.xlsx'
+dataset_sheet = 'dataset+addition_no_test.xlsx'
 sets = ['val']
-model_subfolder = 'Modified_U-Net_2024-01-10_13h41m39s'
+model_subfolder = 'Modified_U-Net_2_no_test_2025-03-10_09h19m43s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I97500.tar'
-device = 'cpu'
+model_checkpoint = 'checkpoint_I64000.tar'
 save_results = True
-save_predictions = True
+save_predictions = False
 
 # define hyperparameter values for thresholds selected based on previous step
-tissue_threshold = 0.5
-pen_threshold = 0.5
+tissue_threshold = 0.1
+pen_threshold = 0.4
 
 # define hyperparameter values for grid search
 pixels_per_bin_values = [10, 20]
@@ -58,7 +56,7 @@ percentiles = [95, 98, 99, 99.5]
 if __name__ == '__main__':
 
     # define output path
-    output_path = predictions_folder / f'SEP-{"_".join(sets)}-{model_subfolder}-{"&".join(sets)}'
+    output_path = predictions_folder / f'SEP-{model_subfolder}-{"&".join(sets)}'
     if output_path.exists():
         raise FileExistsError('Output directory already exists.')
     else:
@@ -94,8 +92,9 @@ if __name__ == '__main__':
     # configure model and reset hyperparameters
     settings_path = models_folder / model_subfolder / model_settings
     checkpoint_path = models_folder / model_subfolder /  model_checkpoint
-    segmenter = SlideSegmenter(channels_last=False, pen_marking_segmentation=False)
-    segmenter._load_model(ModifiedUNet, checkpoint_path, settings_path)
+    segmenter = SlideSegmenter(channels_last=False, pen_marking_segmentation=False, 
+                               separate_cross_sections=True)
+    segmenter._load_model(None, checkpoint_path, settings_path)
 
     # initalize dictionary to store results
     results = {}
@@ -115,18 +114,22 @@ if __name__ == '__main__':
             segmenter.hyperparameters['padding_value'] = 1
  
             # get the model predictions
-            tissue_segmentation, distance_maps = segmenter.segment(
+            output = segmenter.segment(
                 image=image[0, ...], 
                 tissue_threshold=tissue_threshold,
                 pen_marking_threshold=pen_threshold,
                 return_distance_maps=True,
             )
+            tissue_segmentation = output['tissue']
+            distance_maps = output['distance']
+
             # combine the already separated cross-sections again for the grid search
             tissue_segmentation = np.sum(tissue_segmentation, axis=0)
 
             # loop over all combinations of hyperparameter values in the grid search
             hyperparameters_ranges = [pixels_per_bin_values, sigmas, filter_sizes, percentiles]
             combinations = itertools.product(*hyperparameters_ranges)
+            print(combinations)
             for index, hyperparameters in tqdm(enumerate(combinations)):
                 
                 # check if the index for a particular threshold value already exists
