@@ -35,20 +35,21 @@ from utils.evaluation_utils import mean_stdev
 
 # define settings
 dataset_sheet = 'dataset+addition_no_test.xlsx'
-sets = ['val']
-model_subfolder = 'Modified_U-Net_2_no_test_2025-03-10_09h19m43s'
+sets = ['val', 'train']
+model_subfolder = 'Modified_U-Net_no_test_2025-04-15_10h49m20s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I64000.tar'
+model_checkpoint = 'checkpoint_I99000.tar'
 save_results = True
+save_intermediate_results = True
 save_predictions = False
 
 # define hyperparameter values for thresholds selected based on previous step
-tissue_threshold = 0.1
-pen_threshold = 0.4
+tissue_threshold = 0.25
+pen_threshold = 0.80
 
 # define hyperparameter values for grid search
 pixels_per_bin_values = [10, 20]
-sigmas = [None, 1.0, 2.0, 3.0, 4.0]
+sigmas = [1.0, 2.0, 3.0, 4.0]
 filter_sizes = [5, 9, 15]
 percentiles = [95, 98, 99, 99.5]
 
@@ -129,7 +130,6 @@ if __name__ == '__main__':
             # loop over all combinations of hyperparameter values in the grid search
             hyperparameters_ranges = [pixels_per_bin_values, sigmas, filter_sizes, percentiles]
             combinations = itertools.product(*hyperparameters_ranges)
-            print(combinations)
             for index, hyperparameters in tqdm(enumerate(combinations)):
                 
                 # check if the index for a particular threshold value already exists
@@ -144,13 +144,18 @@ if __name__ == '__main__':
                 segmenter.hyperparameters['distance_factor'] = 100
 
                 # separate cross-sections
-                separated_cross_sections, centroids = segmenter._separate_cross_sections(
-                    segmentation=tissue_segmentation, 
-                    horizontal_distance=distance_maps[0, ...], 
-                    vertical_distance=distance_maps[1, ...],
-                )
-                # determine the number of predicted cross-sections
-                predicted_cross_sections = separated_cross_sections.shape[-1]
+                try:
+                    separated_cross_sections, centroids = segmenter._separate_cross_sections(
+                        segmentation=tissue_segmentation, 
+                        horizontal_distance=distance_maps[0, ...], 
+                        vertical_distance=distance_maps[1, ...],
+                    )
+                    # determine the number of predicted cross-sections
+                    predicted_cross_sections = separated_cross_sections.shape[-1]
+                    skip = False
+                except:
+                    predicted_cross_sections = 1000
+                    skip = True
                 
                 # save the results
                 results[index]['image_name'].append(image_name[0])
@@ -164,7 +169,7 @@ if __name__ == '__main__':
                     abs(annotated_cross_sections-predicted_cross_sections),
                 )
 
-                if save_predictions and len(list(combinations)) == 0:
+                if save_predictions and len(list(combinations)) == 0 and not skip:
                     # create image
                     if isinstance(image, torch.Tensor):
                         image = image.numpy()
@@ -191,6 +196,13 @@ if __name__ == '__main__':
                     figure = np.concatenate((image, combined), axis=-1).transpose((0,2,3,1)).astype(np.uint8)
                     # save the figure
                     sitk.WriteImage(sitk.GetImageFromArray(figure), output_path / image_name[0])
+            
+            if save_intermediate_results:
+                # convert to dataframe
+                intermediate_results_df = pd.DataFrame.from_dict(results)
+                # create a excel writer object
+                with pd.ExcelWriter(output_path / 'results.xlsx') as writer:
+                    intermediate_results_df.to_excel(writer, sheet_name="intermediate", index=False)
 
     if save_results:
         # initialize dictionary to combine all results

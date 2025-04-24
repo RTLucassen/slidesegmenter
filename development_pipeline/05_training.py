@@ -85,7 +85,7 @@ USE_CPU = False
 # specify experiment and dataset settings
 configuration = {
     "experiment_name": f'Modified_U-Net_{datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")}',
-    "dataset_filename": 'dataset+addition.xlsx',
+    "dataset_filename": 'dataset+addition_no_test.xlsx',
     "seed": PROJECT_SEED,
     "model_name": "ModifiedUNet",
     "compile_model": False,
@@ -224,7 +224,7 @@ configuration = {
             },
         ],
         "PenMarkings": {
-            "p": 0.25,
+            "p": 0.1,
             "N": (2, 6),
         }
     }

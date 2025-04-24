@@ -35,9 +35,9 @@ from utils.evaluation_utils import mean_stdev, dice_score
 # define settings
 dataset_sheet = 'dataset+addition_no_test.xlsx'
 sets = ['val']
-model_subfolder = 'Modified_U-Net_2_no_test_2025-03-10_09h19m43s'
+model_subfolder = 'Modified_U-Net_no_test_2025-04-15_10h49m20s'
 model_settings = 'settings.json'
-model_checkpoint = 'checkpoint_I64000.tar'
+model_checkpoint = 'checkpoint_I99000.tar'
 save_results = True
 save_predictions = True
 
