@@ -47,7 +47,7 @@ class SlideSegmenter:
                        'settings_filename': 'settings.json'},
         '2024-01-10': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
-        '2025-03-10': {'model_filename': 'model_state_dict.pth', 
+        '2025-04-15': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
     }
 
@@ -76,7 +76,9 @@ class SlideSegmenter:
             model_folder:  Name of model subfolder in model_files folder of the package
                 ('latest' selects the latest model).
             alternative_directory:  Optionally define an alternative directory
-                to store the downloaded model files.
+                to store the downloaded model files (relevant in case an error
+                is thrown when the path length to the cache folder exceeds 
+                the maximum lengthon Windows systems).
         """
         # create instance attributes
         self.channels_last = channels_last
@@ -85,7 +87,7 @@ class SlideSegmenter:
         self.separate_cross_sections = separate_cross_sections
         self.device = device
         self.model_folder = model_folder
-        self.alternative_directory = Path(alternative_directory)
+        self.alternative_directory = alternative_directory
         self.model = None
         self.divisor = None
         self.hyperparameters = {}
@@ -97,6 +99,10 @@ class SlideSegmenter:
             raise ValueError('The separation of cross-sections can only be '
                              'performed if the tissue is segmented.')
         
+        # convert path of alternative directory to Path instance
+        if isinstance(self.alternative_directory, str):
+            self.alternative_directory = Path(alternative_directory)
+
         # load and configure model
         self._load_model()
        
