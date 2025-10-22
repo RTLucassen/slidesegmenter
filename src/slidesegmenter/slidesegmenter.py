@@ -47,8 +47,6 @@ class SlideSegmenter:
                        'settings_filename': 'settings.json'},
         '2024-01-10': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
-        '2025-04-15': {'model_filename': 'model_state_dict.pth', 
-                       'settings_filename': 'settings.json'},
         '2025-10-18': {'model_filename': 'model_state_dict.pth', 
                        'settings_filename': 'settings.json'},
     }
