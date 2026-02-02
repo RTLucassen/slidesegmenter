@@ -424,6 +424,8 @@ class SlideSegmenter:
 
         # determine the number of bins for the histogram
         bins = [image_shape[0]//pixels_per_bin, image_shape[1]//pixels_per_bin]
+        x_centroid_flat = (x_centroid_flat/pixels_per_bin).astype(int)
+        y_centroid_flat = (y_centroid_flat/pixels_per_bin).astype(int)
         # add the top left and bottom right point of the histogram
         # this prevents the histogram from removing empty rows and columns,
         # which would not change the output but can prevent confusion when
@@ -437,6 +439,8 @@ class SlideSegmenter:
             y_centroid_flat, 
             x_centroid_flat, 
             bins=bins,
+            range=[[0, bins[0]-1], 
+                   [0, bins[1]-1]],
         )
         # apply Gaussian filtering to decrease local peaks
         if sigma is not None:
