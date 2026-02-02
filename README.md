@@ -32,9 +32,9 @@ segmentation = segmenter.segment(low_magnification_image)
 Multiple versions of the model are available, which can be selected by specifying 
 the name of the model folder name (see options below) as argument when initializing
 a *SlideSegmenter* instance. By default, the latest version of the model is used.
-- `'2025-03-10'`: Model after the corresponding paper, trained on 840 WSIs of H&E stained skin biopsies and excisions. In comparison to the previous model version, 700 additional challenging WSIs were included. Annotations for these WSIs were obtained by manually correcting the segmentation predictions of the previous model version.
-- `'2024-01-10'`: Model from the corresponding paper, trained on 140 WSIs of H&E stained skin biopsies and excisions.
-- `'2023-08-13'`: Model from a prior version of the corresponding paper, trained on 100 WSIs of H&E stained skin biopsies and excisions.
+- `'2025-10-18'`: Model after the corresponding paper, trained on 750 WSIs (out of 900) of H&E stained skin biopsies and excisions. In comparison to the previous model version, 700 additional challenging WSIs were included. Annotations for these WSIs were obtained by manually correcting the segmentation predictions of the previous model version.
+- `'2024-01-10'`: Model from the corresponding paper, trained on 140 WSIs (out of 200) of H&E stained skin biopsies and excisions.
+- `'2023-08-13'`: Model from a prior version of the corresponding paper, which trained on 100 WSIs of H&E stained skin biopsies and excisions.
 
 ## Configuration and Output
 The output depends on the configuration of the *SlideSegmenter* instance.
